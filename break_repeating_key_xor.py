@@ -38,7 +38,7 @@ def test_001():
     s1 = 'this is a test'
     s2 = 'wokka wokka!!!'
     hamming_test = compute_hamming_distance(s1, s2)
-    print(hamming_test)
+    #print(hamming_test)
     assert hamming_test == 37
 
 
@@ -77,73 +77,19 @@ if __name__ == "__main__":
                     transposed[index] = list()
                 if index < len(block):
                     transposed[index].append(block[index])
-        print(transposed[0])
-
-        #blocks = transposed
 
         values = list()
-
-
         for index, block in transposed.items():
             values.append(cryptopals.find_key_and_decrypt_message(block)[0])
 
-        print(values)
-        result = [binascii.unhexlify(str(itm)).decode('utf-8') for itm in values]
+        result = [chr(itm) for itm in values]
         result = "".join(result)
+
         print(result)
 
-        _key = str(bytearray(values))
-        print(_key)
-        #for block in blocks:
-        #    cryptopals.decrypt_fixed_xor(block, key=result)
-
-        """
-        for key in range(0, 255):
-
-            try:
-                _input = binascii.a2b_hex(str(block[index]))
-                _key = binascii.a2b_hex(str(key))
-                decrypted_xor = cryptopals.decrypt_fixed_xor(_input, _key)
-                if index==1:
-                    print('hello')
-                decrypted = binascii.unhexlify(decrypted_xor)
-                if index==1:
-                    print(decrypted)
-                results = [item.decode('ascii') for item in decrypted.split()
-                           if (item.decode('ascii') in string.ascii_letters or
-                               item.decode('ascii') in string.whitespace)]
-                if results:
-                    key_values[index].append(decrypted)
-                    #print(index, decrypted)
-            except UnicodeDecodeError as e:
-                #key_values[index].append('?')
-                pass
-
-            except binascii.Error as e:
-                #key_values[index].append('?')
-                pass
-
-            """
-
-        #for k, v in key_values.items():
-        #    print(k, v)
-
-        """
-        histogram[index] = key_values
-        key_values = dict()
-
-        for _, value in histogram.items():
-            temp = sorted(value, key=lambda k: len(value[k]), reverse=True)
-            print(value[temp[0]])
-
-        # transpose = [test[index*n] for n,_ in enumerate(test)]
-        #fixed_xor.decrypt(input, )
-
-        # break the cypher for each character
-
-
-
-        # print(stuff[0:4])
-        # for item in stuff:
-        #     print(item, results[item])
-        """
+        #result = "Terminator X: Bring the noise"
+        _key = str.encode(result)
+        #print(_key)
+        for block in blocks:
+            stuff = cryptopals.encrypt_xor(block, key=_key)
+            print(binascii.unhexlify(stuff))

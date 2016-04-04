@@ -2,7 +2,8 @@ import string
 import binascii
 from operator import itemgetter
 import itertools
-import ssl
+from Crypto.Cipher import AES
+
 
 letters = {' ': 0.13000000,
            'e': 0.12575645,
@@ -106,12 +107,14 @@ def find_key_and_decrypt_message(data):
         except AttributeError as e:
             pass
 
+    if len(scores) == 0:
+        scores.append(('<none>', 0, b'<error>'))
     _key, _, _decrypted = max(scores, key=itemgetter(1))
 
     return _key, _decrypted
 
 
-def decrypt_xor(input, key):
+def decrypt_xor(input: bytes, key: bytes):
     input = binascii.unhexlify(input)
     keys = itertools.cycle(key)
 
@@ -120,7 +123,7 @@ def decrypt_xor(input, key):
     return a3
 
 
-def encrypt_xor(input, key):
+def encrypt_xor(input: bytes, key: bytes):
     # ensure we are working with bytes
     if type(input) == str:
         input = bytes(input, 'ascii')
@@ -132,7 +135,7 @@ def encrypt_xor(input, key):
     return binascii.hexlify(output)
 
 
-def compute_hamming_distance(s1, s2):
+def compute_hamming_distance(s1: bytes, s2: bytes):
     """Return the Hamming distance between equal-length sequences"""
     if len(s1) != len(s2):
         raise ValueError("Undefined for sequences of unequal length")
@@ -144,7 +147,7 @@ def compute_hamming_distance(s1, s2):
     return sum(bin(x ^ y).count("1") for (x, y) in zip(s1, s2))
 
 
-def get_normalized_hamming_distance(input, keysize):
+def get_normalized_hamming_distance(input: bytes, keysize: int):
     """
     Expects a base64 input
 
@@ -164,7 +167,7 @@ def get_normalized_hamming_distance(input, keysize):
     return sum(distances) / len(distances) / keysize
 
 
-def get_secret_key_length_from_encrypted_data(text):
+def get_secret_key_length_from_encrypted_data(text: bytes):
     results = dict()
     for keylength in range(2, 40):
         try:
@@ -177,10 +180,11 @@ def get_secret_key_length_from_encrypted_data(text):
 
 def challenge_01():
     input_string = b"49276d206b696c6c696e6720796f757220627261696e206c696b65206120706f69736f6e6f7573206d757368726f6f6d"
-    print(binascii.unhexlify(input_string))
+    # print(binascii.unhexlify(input_string))
     x = convert_bytes_to_base64(input_string)
-    result = True if x.strip() == b"SSdtIGtpbGxpbmcgeW91ciBicmFpbiBsaWtlIGEgcG9pc29ub3VzIG11c2hyb29t" else False
-    print(result)
+
+    assert x.strip() == b"SSdtIGtpbGxpbmcgeW91ciBicmFpbiBsaWtlIGEgcG9pc29ub3VzIG11c2hyb29t"
+
 
 
 def challenge_02():
@@ -188,7 +192,7 @@ def challenge_02():
     key = "686974207468652062756c6c277320657965"
 
     decrypted = decrypt_fixed_xor(data, key)
-    print(binascii.unhexlify(decrypted))
+    # print(binascii.unhexlify(decrypted))
     assert decrypted == b'746865206b696420646f6e277420706c6179'
 
 
@@ -205,7 +209,8 @@ def challenge_03():
     How?
     """
     data = "1b37373331363f78151b7f2b783431333d78397828372d363c78373e783a393b3736"
-    print(find_key_and_decrypt_message(data))
+    key, decrypted_message = find_key_and_decrypt_message(data)
+    assert decrypted_message == b"Cooking MC's like a pound of bacon"
 
 
 def challenge_04():
@@ -217,18 +222,28 @@ def challenge_04():
 
     (Your code from #3 should help.)
     """
+
+    # obtained by http://www.dummies.com/how-to/content/top-50-most-commonly-used-words-in-english.html
+    keywords = ["the", "he", "at", "but", "there", "of",
+                "was", "be", "not", "use", "and", "for",
+                "this", "what", "an", "a", "on", "have",
+                "all", "each", "to", "are", "from",
+                "were", "which", "in", "as", "or", "we",
+                "she", "is", "with", "when", "do",
+                "you", "his", "had", "your", "how",
+                "that", "they", "by", "can", "their",
+                "it", "I", "word", "said", "if"]
+
     with open("4.txt", 'r') as handle:
         for line in handle.readlines():
             line = binascii.a2b_hex(line.strip())
-            try:
-                attempt = find_key_and_decrypt_message(line)
 
-                words = attempt[1].decode('utf-8').split()
-                for word in words:
-                    if word in keywords:
-                        print(attempt)
-            except:
-                pass
+            attempt = find_key_and_decrypt_message(line)
+            key, decrypted = attempt
+            words = decrypted.decode('utf-8').split()
+            english = [word for word in words if word in keywords]
+            if english:
+                assert decrypted == b'Now that the party is jumping\n'
 
 
 def challenge_05():
@@ -280,7 +295,8 @@ def challenge_06():
 
         result = [chr(itm) for itm in values]
         result = "".join(result)
-
+        assert result == 'Terminator X: Bring the noise'
+        """
         print("KEY: {}".format(result))
 
         # result = "Terminator X: Bring the noise"
@@ -292,6 +308,13 @@ def challenge_06():
             lines.append(binascii.unhexlify(stuff).decode('utf-8'))
 
         print("".join(lines))
+        """
+
+def decrypt_aes(text, key):
+    cipher = AES.new(key, AES.MODE_ECB)
+    result = cipher.decrypt(text)
+
+    return result
 
 
 def challenge_07():
@@ -307,16 +330,85 @@ def challenge_07():
 
     Easiest way: use OpenSSL::Cipher and give it AES-128-ECB as the cipher.
     """
+
+    key = b'YELLOW SUBMARINE'
+
     with open("7.txt", 'r') as handle:
         text = binascii.a2b_base64(handle.read())
-        print(text)
+
+        result = decrypt_aes(text, key)
+
+        for line in result.decode('utf-8').split('\n'):
+            print(line)
 
 
+def challenge_08():
+    """
+    8.txt contains a bunch of hex-encoded ciphertexts.
+    - One of them has been encrypted with ECB.
+    - Detect it.
+    - The problem with ECB is that it is stateless and deterministic;
+    - the same 16 byte plaintext block will always produce the same 16 byte ciphertext.
+    """
+    def detect_ecb_use(text, keysize):
+        """
+        If I understand this correctly - a large enough dataset will likely have something repeated, revealing a clue
+        that the text could be encoded with ECB.
+        """
+        chunks = [text[n:n+keysize] for n in range(0, len(text), keysize)]
+        if len(chunks) != len(set(chunks)):
+            return True
+        return False
+
+    with open("8.txt", 'r') as handle:
+        lines = handle.readlines()
+        for ln, line in enumerate(lines):
+            text = binascii.unhexlify(line.strip('\n'))
+            if detect_ecb_use(text, 16):
+                print(ln, line)
+
+
+def pkcs_7_padding(text: bytes, pad: int):
+    """
+    A block cipher transforms a fixed - sized block(usually 8 or 16 bytes) of plaintext into
+    ciphertext. But we almost never want to transform a single block; we encrypt irregularly - sized messages.
+
+    One way we account for irregularly - sized messages is by padding, creating a plaintext that is an even multiple of
+    the blocksize. The most popular padding scheme is called PKCS  # 7.
+
+    So: pad any block to a specific block length, by appending the number of bytes of padding to the end of the block.
+
+    For instance,
+
+    "YELLOW SUBMARINE"
+    ...
+    padded to 20 bytes would be:
+
+    "YELLOW SUBMARINE\x04\x04\x04\x04"
+    """
+    results = []
+    blocks = [text[n:n + pad] for n in range(0, len(text), pad)]
+    for block in blocks:
+        padding = pad - len(block)
+        if padding != 0:
+            hexed = binascii.a2b_hex('{:02}'.format(padding))
+            block += hexed*padding
+        results.append(block)
+
+    return b"".join(results)
+
+
+def challenge_09():
+    text = b'YELLOW SUBMARINE'
+    print(pkcs_7_padding(text, 30))
 if __name__ == "__main__":
+
     challenge_01()
     challenge_02()
     challenge_03()
     challenge_04()
     challenge_05()
     challenge_06()
-    #challenge_07()
+    challenge_07()
+    challenge_08()
+    challenge_09()

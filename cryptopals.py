@@ -115,7 +115,7 @@ def find_key_and_decrypt_message(data):
 
 
 def decrypt_xor(input: bytes, key: bytes):
-    input = binascii.unhexlify(input)
+    #input = binascii.unhexlify(input)
     keys = itertools.cycle(key)
 
     a3 = bytes(x ^ y for (x, y) in zip(input, keys))
@@ -310,9 +310,17 @@ def challenge_06():
         print("".join(lines))
         """
 
+
 def decrypt_aes(text, key):
     cipher = AES.new(key, AES.MODE_ECB)
     result = cipher.decrypt(text)
+
+    return result
+
+
+def encrypt_aes(encrypted, key):
+    cipher = AES.new(key, AES.MODE_ECB)
+    result = cipher.encrypt(encrypted)
 
     return result
 
@@ -395,12 +403,78 @@ def pkcs_7_padding(text: bytes, pad: int):
             block += hexed*padding
         results.append(block)
 
-    return b"".join(results)
+    return results
 
 
 def challenge_09():
     text = b'YELLOW SUBMARINE'
-    print(pkcs_7_padding(text, 30))
+    print(pkcs_7_padding(text, 20))
+
+def challenge_10():
+    """
+    CBC mode is a block cipher mode that allows us to encrypt irregularly-sized messages, despite the fact that a block
+    cipher natively only transforms individual blocks.  In CBC mode, each ciphertext block is added to the next
+    plaintext block before the next call to the cipher core.
+
+    The first plaintext block, which has no associated previous ciphertext block, is added to a
+    "fake 0th ciphertext block" called the initialization vector, or IV.
+
+    Implement CBC mode by hand by taking the ECB function you wrote earlier, making it encrypt instead of decrypt
+    (verify this by decrypting whatever you encrypt to test), and using your XOR function from the previous exercise
+    to combine them.
+
+    The file is intelligible (somewhat) when CBC decrypted against "YELLOW SUBMARINE" with an IV of all ASCII 0
+    (\x00\x00\x00 &c)
+    """
+
+    key = b'YELLOW SUBMARINE'
+    iv = b"\x00"*16
+    test_text = b"this is my fancy text statement."
+    encrypted = encrypt_aes(test_text, key)
+    decrypted = decrypt_aes(encrypted, key)
+
+    print(encrypted)
+    print(decrypted)
+
+    def encrypt_aes_with_custom_cbc(text, key, iv):
+        results = []
+        keysize = len(key)
+        blocks = [text[n:n + keysize] for n in range(0, len(text), keysize)]
+        for block in blocks:
+            padded_blocks = pkcs_7_padding(block, len(key))
+            for padded_block in padded_blocks:
+                xor_encrypt = encrypt_xor(padded_block, iv)
+                encrypt = encrypt_aes(xor_encrypt, key)
+                iv = encrypt
+                results.append(encrypt)
+
+        for itm in results:
+            print(itm)
+        return results
+
+    def decrypt_aes_with_custom_cbc(text, key, iv):
+        results = []
+        keysize = len(key) * 2
+        blocks = [text[n:n + keysize] for n in range(0, len(text), keysize)]
+        print("------")
+        for block in blocks:
+            print(block)
+            xor_decrypt = decrypt_xor(block, iv)
+            iv = block
+            results.append(xor_decrypt)
+
+        return results
+
+
+    encrypted = encrypt_aes_with_custom_cbc("Hello World 1234" *10, key, iv)
+    encrypted = b"".join(encrypted)
+    decrypted = decrypt_aes_with_custom_cbc(encrypted, key, iv)
+    print(decrypted)
+#    with open('10.txt', 'rb') as handle:
+#        text = handle.read()
+#        decrypt_aes_with_custom_cbc(text, key, "\x00"*16)
+
+
 if __name__ == "__main__":
 
     challenge_01()
@@ -412,3 +486,4 @@ if __name__ == "__main__":
     challenge_07()
     challenge_08()
     challenge_09()
+    challenge_10()

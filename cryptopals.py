@@ -1,9 +1,10 @@
 import string
+import random
 import binascii
 from operator import itemgetter
 import itertools
 from Crypto.Cipher import AES
-
+import os
 
 letters = {' ': 0.13000000,
            'e': 0.12575645,
@@ -114,11 +115,11 @@ def find_key_and_decrypt_message(data):
     return _key, _decrypted
 
 
-def decrypt_xor(input: bytes, key: bytes):
-    #input = binascii.unhexlify(input)
+def decrypt_xor(data: bytes, key: bytes) -> bytes:
+    # input = binascii.unhexlify(input)
     keys = itertools.cycle(key)
 
-    a3 = bytes(x ^ y for (x, y) in zip(input, keys))
+    a3 = bytes(x ^ y for (x, y) in zip(data, keys))
 
     return a3
 
@@ -135,7 +136,7 @@ def encrypt_xor(input: bytes, key: bytes):
     return binascii.hexlify(output)
 
 
-def compute_hamming_distance(s1: bytes, s2: bytes):
+def compute_hamming_distance(s1: bytes, s2: bytes) -> int:
     """Return the Hamming distance between equal-length sequences"""
     if len(s1) != len(s2):
         raise ValueError("Undefined for sequences of unequal length")
@@ -147,7 +148,7 @@ def compute_hamming_distance(s1: bytes, s2: bytes):
     return sum(bin(x ^ y).count("1") for (x, y) in zip(s1, s2))
 
 
-def get_normalized_hamming_distance(input: bytes, keysize: int):
+def get_normalized_hamming_distance(data: bytes, keysize: int) -> float:
     """
     Expects a base64 input
 
@@ -156,18 +157,18 @@ def get_normalized_hamming_distance(input: bytes, keysize: int):
     Normalize this result by dividing by KEYSIZE.
     """
 
-    if type(input) != bytes:
-        input = bytes(input, 'ascii')
+    if type(data) != bytes:
+        data = bytes(data, 'ascii')
 
     # the greater the number of chunks the more likely a good result can be had
-    chunks = [input[keysize*n:keysize*(n+1)] for n in range(0, 20)]
+    chunks = [data[keysize * n:keysize * (n + 1)] for n in range(0, 20)]
     chunks = [chunk for chunk in chunks if len(chunk) == keysize]
     distances = list(map(compute_hamming_distance, chunks, chunks[1:]))
 
     return sum(distances) / len(distances) / keysize
 
 
-def get_secret_key_length_from_encrypted_data(text: bytes):
+def get_secret_key_length_from_encrypted_data(text: bytes) -> int:
     results = dict()
     for keylength in range(2, 40):
         try:
@@ -178,13 +179,13 @@ def get_secret_key_length_from_encrypted_data(text: bytes):
 
     return key_length
 
+
 def challenge_01():
     input_string = b"49276d206b696c6c696e6720796f757220627261696e206c696b65206120706f69736f6e6f7573206d757368726f6f6d"
     # print(binascii.unhexlify(input_string))
     x = convert_bytes_to_base64(input_string)
 
     assert x.strip() == b"SSdtIGtpbGxpbmcgeW91ciBicmFpbiBsaWtlIGEgcG9pc29ub3VzIG11c2hyb29t"
-
 
 
 def challenge_02():
@@ -350,6 +351,17 @@ def challenge_07():
             print(line)
 
 
+def detect_ecb_use(text, keysize: int):
+    """
+    If I understand this correctly - a large enough dataset will likely have something repeated since
+    ECB is stateless and deterministic.
+    """
+    chunks = [text[n:n + keysize] for n in range(0, len(text), keysize)]
+    if len(chunks) != len(set(chunks)):
+        return True
+    return False
+
+
 def challenge_08():
     """
     8.txt contains a bunch of hex-encoded ciphertexts.
@@ -358,15 +370,6 @@ def challenge_08():
     - The problem with ECB is that it is stateless and deterministic;
     - the same 16 byte plaintext block will always produce the same 16 byte ciphertext.
     """
-    def detect_ecb_use(text, keysize):
-        """
-        If I understand this correctly - a large enough dataset will likely have something repeated, revealing a clue
-        that the text could be encoded with ECB.
-        """
-        chunks = [text[n:n+keysize] for n in range(0, len(text), keysize)]
-        if len(chunks) != len(set(chunks)):
-            return True
-        return False
 
     with open("8.txt", 'r') as handle:
         lines = handle.readlines()
@@ -376,7 +379,7 @@ def challenge_08():
                 print(ln, line)
 
 
-def pkcs_7_padding(text: bytes, pad: int):
+def pkcs_7_padding(text: bytes, pad: int) -> list:
     """
     A block cipher transforms a fixed - sized block(usually 8 or 16 bytes) of plaintext into
     ciphertext. But we almost never want to transform a single block; we encrypt irregularly - sized messages.
@@ -410,6 +413,38 @@ def challenge_09():
     text = b'YELLOW SUBMARINE'
     print(pkcs_7_padding(text, 20))
 
+
+def encrypt_aes_with_custom_cbc(text, key, iv):
+    results = []
+    keysize = len(key)
+    blocks = [text[n:n + keysize] for n in range(0, len(text), keysize)]
+    for block in blocks:
+        padded_block = pkcs_7_padding(block, keysize)[0]
+        xor_encrypt = encrypt_xor(padded_block, iv)
+        unhexed = binascii.unhexlify(xor_encrypt)
+        encrypt = encrypt_aes(unhexed, key)
+        iv = encrypt
+        results.append(encrypt)
+
+    return results
+
+
+def decrypt_aes_with_custom_cbc(text, key, iv):
+    results = []
+    keysize = len(key)
+    blocks = [text[n:n + keysize] for n in range(0, len(text), keysize)]
+
+    for block in blocks:
+        aes_decrypt = decrypt_aes(block, key)
+        xor_decrypt = decrypt_xor(aes_decrypt, iv)
+
+        results.append(xor_decrypt)
+
+        iv = block
+
+    return results
+
+
 def challenge_10():
     """
     CBC mode is a block cipher mode that allows us to encrypt irregularly-sized messages, despite the fact that a block
@@ -428,52 +463,107 @@ def challenge_10():
     """
 
     key = b'YELLOW SUBMARINE'
-    iv = b"\x00"*16
+    iv = bytes([0] * 16)
     test_text = b"this is my fancy text statement."
     encrypted = encrypt_aes(test_text, key)
     decrypted = decrypt_aes(encrypted, key)
 
-    print(encrypted)
-    print(decrypted)
+    assert test_text == decrypted
 
-    def encrypt_aes_with_custom_cbc(text, key, iv):
-        results = []
-        keysize = len(key)
-        blocks = [text[n:n + keysize] for n in range(0, len(text), keysize)]
-        for block in blocks:
-            padded_blocks = pkcs_7_padding(block, len(key))
-            for padded_block in padded_blocks:
-                xor_encrypt = encrypt_xor(padded_block, iv)
-                encrypt = encrypt_aes(xor_encrypt, key)
-                iv = encrypt
-                results.append(encrypt)
+    text = binascii.a2b_base64(open('10.txt', 'r').read())
 
-        for itm in results:
-            print(itm)
-        return results
+    results = decrypt_aes_with_custom_cbc(text, key, iv)
+    encrypt = encrypt_aes_with_custom_cbc(b"".join(results), key, iv)
 
-    def decrypt_aes_with_custom_cbc(text, key, iv):
-        results = []
-        keysize = len(key) * 2
-        blocks = [text[n:n + keysize] for n in range(0, len(text), keysize)]
-        print("------")
-        for block in blocks:
-            print(block)
-            xor_decrypt = decrypt_xor(block, iv)
-            iv = block
-            results.append(xor_decrypt)
-
-        return results
+    assert text == b"".join(encrypt)
 
 
-    encrypted = encrypt_aes_with_custom_cbc("Hello World 1234" *10, key, iv)
-    encrypted = b"".join(encrypted)
-    decrypted = decrypt_aes_with_custom_cbc(encrypted, key, iv)
-    print(decrypted)
-#    with open('10.txt', 'rb') as handle:
-#        text = handle.read()
-#        decrypt_aes_with_custom_cbc(text, key, "\x00"*16)
+def generate_random_bytes(length):
+    return os.urandom(length)
 
+
+def challenge_11():
+    """
+    An ECB/CBC detection oracle
+    Now that you have ECB and CBC working:
+
+    Write a function to generate a random AES key; that's just 16 random bytes.
+
+    Write a function that encrypts data under an unknown key --- that is, a function that generates a random key and
+    encrypts under it.
+
+    The function should look like:
+
+    encryption_oracle(your-input)
+    => [MEANINGLESS JIBBER JABBER]
+    Under the hood, have the function append 5-10 bytes (count chosen randomly) before the plaintext and 5-10 bytes
+    after the plaintext.
+
+    Now, have the function choose to encrypt under ECB 1/2 the time, and under CBC the other half (just use random IVs
+    each time for CBC). Use rand(2) to decide which to use.
+
+    Detect the block cipher mode the function is using each time. You should end up with a piece of code that, pointed
+    at a block box that might be encrypting ECB or CBC, tells you which one is happening.
+
+
+    :return:
+    """
+
+
+    def encrypt_oracle(text):
+        random_aes_key = generate_random_bytes(16)
+        prefix = generate_random_bytes(random.randint(5, 10))
+        postfix = generate_random_bytes(random.randint(5, 10))
+
+        message = b"".join([prefix, text, postfix])
+
+        if random.randint(1, 2) == 2:
+            type = 'ECB'
+            # encrypt ECB
+            keysize = len(random_aes_key)
+            blocks = [text[n:n + keysize] for n in range(0, len(text), keysize)]
+            encrypted = []
+            for block in blocks:
+                padded_block = pkcs_7_padding(block, keysize)[0]
+                text = encrypt_aes(padded_block, random_aes_key)
+                #print(binascii.hexlify(text))
+                encrypted.append(text)
+        else:
+            # encrypt_CBC
+            type = 'CBC'
+            random_iv = generate_random_bytes(16)
+            encrypted = encrypt_aes_with_custom_cbc(message, random_aes_key, random_iv)
+
+        return encrypted, type
+
+    for x in range(10):
+        test, type = encrypt_oracle(b"""This is a long story of two people who don't know each other, but something
+        imortant needs to be told.  There once was a witch who lived in a shoe and she didn't have kids and didn't know
+        what to do - but you know it was probably pretty important for her to do the things that she did cuz they told
+        so many stories about her. Barbeques can be fun they tell me.  Is there nothing repeatable in this story? The
+        only hting I have left is some additional words. What the hell should i do now -- cuz this is a long as heck
+        story. This is something that is alrady a fairly good length -- it is hard for me to believe that shorter
+        messages aren't going to be sent.  I guess if you are publishing a manifesto or something then the problem
+        occurs. I mentioned a witch and some dogs and some kids.  Does that help? Tell me what I should do? Holy hell.
+        What else must I do to prove that there is some repetition in the file? this seems pretty useless.
+
+        This is a very long story of two people who don't know each other, but something important needs to be told.
+        There once shoe and she didn't have kids and didn't know what to do. Something repeatable some random stuff
+        was a witch who lived in a shoe and she didn't have kids and didn't know what to do. Something repeatable has to
+        exist here or there simply won't be a way to determine if the text is repeating since it is stateless and
+        deterministic. So now I'm just rambling on and on and figuring out what I should write -- but gotta admit this is
+        prety crazy now.  I don't remember ever having to write an email of this length -- so if this is the weakness,
+        then we are in a lot of trouble.One thing - is there a way to prevent it from dictating the directory - I set
+        up all my substance directories within my Max project folders. Each object has it's own folder within the main
+        substance folder - that's always been my workflow. But with this bridge it insists on creating a SendtoSubstance
+        folder with an additional folder (exported name) with in that one. I would like to be able to just direct the
+        files to the folder of my chosing. Now I have to move them then delete the SendtoSubstance folder.""")
+        testing = b''.join(test)
+
+        testing = binascii.hexlify(testing)
+        print("Content encrypted as {0}.  {1} (ECB?)".format(type, detect_ecb_use(testing, len(test[0]))))
+
+    # print(test)
 
 if __name__ == "__main__":
 
@@ -487,3 +577,4 @@ if __name__ == "__main__":
     challenge_08()
     challenge_09()
     challenge_10()
+    challenge_11()

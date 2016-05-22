@@ -1,6 +1,7 @@
 import string
 import random
 import binascii
+import base64
 from operator import itemgetter
 import itertools
 from Crypto.Cipher import AES
@@ -509,7 +510,6 @@ def challenge_11():
     :return:
     """
 
-
     def encrypt_oracle(text):
         random_aes_key = generate_random_bytes(16)
         prefix = generate_random_bytes(random.randint(5, 10))
@@ -561,12 +561,150 @@ def challenge_11():
         testing = b''.join(test)
 
         testing = binascii.hexlify(testing)
-        print("Content encrypted as {0}.  {1} (ECB?)".format(type, detect_ecb_use(testing, len(test[0]))))
+        print("Content encrypted as {0}.  Is ECB?: {1}".format(type, detect_ecb_use(testing, len(test[0]))))
 
     # print(test)
 
-if __name__ == "__main__":
 
+def encrypt_ecb_oracle(text, prefix, random_aes_key):
+
+    message = b"".join([text, prefix])
+
+    # encrypt ECB
+    keysize = len(random_aes_key)
+    blocks = [message[n:n + keysize] for n in range(0, len(message), keysize)]
+    encrypted = []
+    for block in blocks:
+        padded_block = pkcs_7_padding(block, keysize)[0]
+        _text = encrypt_aes(padded_block, random_aes_key)
+        # print(binascii.hexlify(_text))
+        encrypted.append(_text)
+
+    return encrypted
+
+def discover_block_size_and_if_ecb(encrypted_blocks):
+
+    encrypted_string = b''.join(encrypted_blocks)
+    key_length = get_secret_key_length_from_encrypted_data(encrypted_string)
+    print("Number of blocks: {}".format(len(encrypted_blocks)))
+    is_ecb = detect_ecb_use(encrypted_string, key_length)
+
+    return key_length, is_ecb
+
+
+def challenge_12():
+    """
+    Byte - at - a - time
+
+    ECB decryption(Simple)
+    Copy your oracle function to a new function that encrypts buffers under ECB mode using a
+    consistent but unknown key (for instance, assign a single random key, once, to a global variable).
+
+    Now take that same function and have it append to the plaintext, BEFORE ENCRYPTING, the
+    following string:
+
+    Um9sbGluJyBpbiBteSA1LjAKV2l0aCBteSByYWctdG9wIGRvd24gc28gbXkgaGFpciBjYW4gYmxvdwpUaGUgZ2lybGllcyBvbiBzdGFuZGJ5IHdhdmluZyBqdXN0IHRvIHNheSBoaQpEaWQgeW91IHN0b3A/IE5vLCBJIGp1c3QgZHJvdmUgYnkK
+
+    Spoiler alert. Do not decode this string now. Don't do it.
+
+    Base64 decode the string before appending it. Do not base64
+    decode the string by hand; make your code do it.The point is that you don't know its contents.
+
+    What you have now is a function that produces:
+
+    AES - 128 - ECB(your - string | | unknown - string, random - key)
+
+    It turns out: you can decrypt "unknown-string" with repeated calls to the oracle function!
+
+    Here's roughly how:
+
+    Feed identical bytes of your-string to the function 1 at a time
+    --- start with 1 byte ("A"), then "AA", then "AAA" and so on.
+
+    1. Discover the block size of the cipher. You know it, but do this step anyway
+    2. Detect that the function is using ECB. You already know, but do this step anyways.
+    3. Knowing the block size, craft an input block that is exactly 1 byte short (for instance, if the block size is
+       8 bytes, make "AAAAAAA"). Think about what the oracle function is going to put in that last byte position.
+    4. Make a dictionary of every possible last byte by feeding different strings to the oracle; for instance,
+       "AAAAAAAA", "AAAAAAAB", "AAAAAAAC", remembering the first block of each invocation.
+    5. Match the output of the one-byte-short input to one of the entries in your dictionary. You've now discovered
+       the first byte of unknown-string.
+    6. Repeat for the next byte.
+    """
+
+    base64_encoded = 'Um9sbGluJyBpbiBteSA1LjAKV2l0aCBteSByYWctdG9wIGRvd24gc28gbXkgaGFpciBjYW4gYmxvdwpUaGUgZ2lybGllcyBvbiBzdGFuZGJ5IHdhdmluZyBqdXN0IHRvIHNheSBoaQpEaWQgeW91IHN0b3A/IE5vLCBJIGp1c3QgZHJvdmUgYnkK'
+    base64_decoded = base64.b64decode(base64_encoded)
+    random_aes_key = generate_random_bytes(16)
+
+    # Create encrypted content
+    text_large = b'A' * 256
+    encrypted_blocks = encrypt_ecb_oracle(text_large, base64_decoded, random_aes_key)
+
+    key_length, is_ecb = discover_block_size_and_if_ecb(encrypted_blocks)
+    print("Key Length: {0}\nIs ECB: {1}\n".format(key_length, is_ecb))
+
+
+    collector = list()
+
+    encrypted_blocks = encrypt_ecb_oracle(b'', base64_decoded, random_aes_key)
+    for block_idx in range(len(encrypted_blocks)):
+        block_text = b'A' * key_length * block_idx
+
+        current_block = list()
+        for length in reversed(range(key_length)):
+            text = block_text + b'A' * length  # one block short
+
+            result = encrypt_ecb_oracle(text, base64_decoded[block_idx*16:], random_aes_key)
+
+            decrypted_block = b''.join(current_block)
+            _decrypted = False
+            for index in range(0, 255):
+                if _decrypted is False:
+
+                    text2 = b''.join([text,  decrypted_block, chr(index).encode()])
+                    if len(text2) <= key_length + len(block_text):
+
+                        result2 = encrypt_ecb_oracle(text2, base64_decoded, random_aes_key)
+                        if result[block_idx] == result2[block_idx]:
+                            current_block.append(chr(index).encode())
+                            # print(block_idx, len(text2), chr(index), result2[block_idx])
+                            _decrypted = True
+
+        collector.append(b"".join(current_block))
+    print("Decrypted: {}".format(b''.join(collector)))
+
+def challenge_13():
+    """
+    ECB cut-and-paste
+    Write a k=v parsing routine, as if for a structured cookie. The routine should take:
+
+    foo=bar&baz=qux&zap=zazzle
+    ... and produce:
+
+    {
+      foo: 'bar',
+      baz: 'qux',
+      zap: 'zazzle'
+    }
+    (you know, the object; I don't care if you convert it to JSON).
+    :return:
+    """
+
+    def create_structured_cookie(text):
+        kv = dict()
+        items = text.split('&')
+        for item in items:
+            stuff = item.split('=')
+            kv[stuff[0]] = stuff[1]
+
+        return kv
+
+
+    text = 'foo=bar&baz=qux&zap=zazzle'
+    cookie = create_structured_cookie(text)
+    print(cookie)
+
+if __name__ == "__main__":
     challenge_01()
     challenge_02()
     challenge_03()
@@ -578,3 +716,5 @@ if __name__ == "__main__":
     challenge_09()
     challenge_10()
     challenge_11()
+    challenge_12()
+    challenge_13()

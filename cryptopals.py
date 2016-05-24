@@ -4,6 +4,7 @@ import binascii
 import base64
 from operator import itemgetter
 import itertools
+import collections
 from Crypto.Cipher import AES
 import os
 
@@ -404,7 +405,7 @@ def pkcs_7_padding(text: bytes, pad: int) -> list:
         padding = pad - len(block)
         if padding != 0:
             hexed = binascii.a2b_hex('{:02}'.format(padding))
-            block += hexed*padding
+            block += hexed * padding
         results.append(block)
 
     return results
@@ -526,7 +527,7 @@ def challenge_11():
             for block in blocks:
                 padded_block = pkcs_7_padding(block, keysize)[0]
                 text = encrypt_aes(padded_block, random_aes_key)
-                #print(binascii.hexlify(text))
+                # print(binascii.hexlify(text))
                 encrypted.append(text)
         else:
             # encrypt_CBC
@@ -563,11 +564,10 @@ def challenge_11():
         testing = binascii.hexlify(testing)
         print("Content encrypted as {0}.  Is ECB?: {1}".format(type, detect_ecb_use(testing, len(test[0]))))
 
-    # print(test)
+        # print(test)
 
 
 def encrypt_ecb_oracle(text, prefix, random_aes_key):
-
     message = b"".join([text, prefix])
 
     # encrypt ECB
@@ -582,14 +582,53 @@ def encrypt_ecb_oracle(text, prefix, random_aes_key):
 
     return encrypted
 
-def discover_block_size_and_if_ecb(encrypted_blocks):
 
+def discover_block_size_and_if_ecb(encrypted_blocks):
     encrypted_string = b''.join(encrypted_blocks)
     key_length = get_secret_key_length_from_encrypted_data(encrypted_string)
     print("Number of blocks: {}".format(len(encrypted_blocks)))
     is_ecb = detect_ecb_use(encrypted_string, key_length)
 
     return key_length, is_ecb
+
+
+def decrypt_ecb_message_without_key(encrypted_blocks, base64_decoded, random_aes_key):
+    # Create encrypted content
+    text_large = b'A' * 512
+    encr_large = encrypt_ecb_oracle(text_large, base64_decoded, random_aes_key)
+    key_length, is_ecb = discover_block_size_and_if_ecb(encr_large)
+    print("Key Length: {0}\nIs ECB: {1}\n".format(key_length, is_ecb))
+
+    collector = list()
+
+    for block_idx in range(len(encrypted_blocks)):
+        block_text = b'A' * key_length * block_idx
+
+        current_block = list()
+        for length in reversed(range(key_length)):
+            text = block_text + b'A' * length  # one block short
+
+            result = encrypt_ecb_oracle(text, base64_decoded[block_idx * 16:], random_aes_key)
+
+            decrypted_block = b''.join(current_block)
+            _decrypted = False
+
+            for index in range(0, 255):
+                if _decrypted is False:
+
+                    text2 = b''.join([text, decrypted_block, chr(index).encode()])
+
+                    if len(text2) <= key_length + len(block_text):
+
+                        result2 = encrypt_ecb_oracle(text2, base64_decoded, random_aes_key)
+
+                        if block_idx < len(encrypted_blocks) and result[block_idx] == result2[block_idx]:
+                            current_block.append(chr(index).encode())
+                            # print(block_idx, len(text2), chr(index), result2[block_idx])
+                            _decrypted = True
+
+        collector.append(b"".join(current_block))
+    print("Decrypted: {}".format(b''.join(collector)))
 
 
 def challenge_12():
@@ -636,42 +675,10 @@ def challenge_12():
     base64_decoded = base64.b64decode(base64_encoded)
     random_aes_key = generate_random_bytes(16)
 
-    # Create encrypted content
-    text_large = b'A' * 256
-    encrypted_blocks = encrypt_ecb_oracle(text_large, base64_decoded, random_aes_key)
-
-    key_length, is_ecb = discover_block_size_and_if_ecb(encrypted_blocks)
-    print("Key Length: {0}\nIs ECB: {1}\n".format(key_length, is_ecb))
-
-
-    collector = list()
-
     encrypted_blocks = encrypt_ecb_oracle(b'', base64_decoded, random_aes_key)
-    for block_idx in range(len(encrypted_blocks)):
-        block_text = b'A' * key_length * block_idx
 
-        current_block = list()
-        for length in reversed(range(key_length)):
-            text = block_text + b'A' * length  # one block short
+    decrypt_ecb_message_without_key(encrypted_blocks, base64_decoded, random_aes_key)
 
-            result = encrypt_ecb_oracle(text, base64_decoded[block_idx*16:], random_aes_key)
-
-            decrypted_block = b''.join(current_block)
-            _decrypted = False
-            for index in range(0, 255):
-                if _decrypted is False:
-
-                    text2 = b''.join([text,  decrypted_block, chr(index).encode()])
-                    if len(text2) <= key_length + len(block_text):
-
-                        result2 = encrypt_ecb_oracle(text2, base64_decoded, random_aes_key)
-                        if result[block_idx] == result2[block_idx]:
-                            current_block.append(chr(index).encode())
-                            # print(block_idx, len(text2), chr(index), result2[block_idx])
-                            _decrypted = True
-
-        collector.append(b"".join(current_block))
-    print("Decrypted: {}".format(b''.join(collector)))
 
 def challenge_13():
     """
@@ -691,7 +698,7 @@ def challenge_13():
     """
 
     def create_structured_cookie(text):
-        kv = dict()
+        kv = collections.OrderedDict()
         items = text.split('&')
         for item in items:
             stuff = item.split('=')
@@ -699,12 +706,84 @@ def challenge_13():
 
         return kv
 
+    def profile_for(email):
+        '''
+        Now write a function that encodes a user profile in that format, given an email address.
 
-    text = 'foo=bar&baz=qux&zap=zazzle'
-    cookie = create_structured_cookie(text)
+        You should have something like:
+
+        profile_for("foo@bar.com")
+
+        ... and it should produce:
+
+        {
+          email: 'foo@bar.com',
+          uid: 10,
+          role: 'user'
+        }
+        ... encoded as:
+
+        email=foo@bar.com&uid=10&role=user
+        Your "profile_for" function should not allow encoding metacharacters (& and =).
+        Eat them, quote them, whatever you want to do,
+        but don't let people set their email address to "foo@bar.com&role=admin".
+        :return:
+        '''
+
+        # Eat illegals
+        illegals = '&='
+        for illegal in illegals:
+            email.replace(illegal, '')
+
+        user_profile = collections.OrderedDict()
+        user_profile['email'] = email
+        user_profile['uid'] = 10
+        user_profile['role'] = 'user'
+
+        items = ['{0}={1}'.format(k, v) for k, v in user_profile.items()]
+        user_text = '&'.join(items)
+
+        return user_text
+
+    email = 'adminisfake.test@gmail.com' + \
+            'admin{}'.format('\x11' * 11) + \
+            '   '  # necessary to push 'user' to its own line
+    profile = profile_for(email)
+    cookie = create_structured_cookie(profile)
+
     print(cookie)
 
+    '''
+    Now, two more easy functions. Generate a random AES key, then:
+        A.	Encrypt the encoded user profile under the key; "provide" that to the "attacker".
+        B.	Decrypt the encoded user profile and parse it.
+
+    Using only the user input to profile_for() (as an oracle to generate "valid" ciphertexts)
+    and the ciphertexts themselves, make a role=admin profile.
+    '''
+    random_aes_key = generate_random_bytes(16)
+
+    blocks = pkcs_7_padding(profile.encode(), len(random_aes_key))
+    blocks_as_string = b''.join(blocks)
+    for_attacker = encrypt_aes(blocks_as_string, random_aes_key)
+
+    print("For Attacker: {}".format(for_attacker))
+
+    _ = pkcs_7_padding(for_attacker, len(random_aes_key))
+
+    # Reorder the ECB Blocks and throw away the regular user account :)
+    final = list()
+    final.append(_[0])
+    final.append(_[1])
+    final.append(_[3])
+    final.append(_[2])
+
+    for_me = decrypt_aes(b''.join(final), random_aes_key)
+    print("\n{}".format(for_me))
+
+
 if __name__ == "__main__":
+
     challenge_01()
     challenge_02()
     challenge_03()

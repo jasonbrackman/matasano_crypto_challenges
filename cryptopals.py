@@ -745,9 +745,9 @@ def challenge_13():
 
         return user_text
 
-    email = 'adminisfake.test@gmail.com' + \
+    email = 'theadminisfake.test@gmail.' + \
             'admin{}'.format('\x11' * 11) + \
-            '   '  # necessary to push 'user' to its own line
+            'com'  # necessary to push 'user' to its own line
     profile = profile_for(email)
     cookie = create_structured_cookie(profile)
 

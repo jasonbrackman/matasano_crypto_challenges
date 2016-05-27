@@ -567,18 +567,23 @@ def challenge_11():
         # print(test)
 
 
-def encrypt_ecb_oracle(text, prefix, random_aes_key):
-    message = b"".join([text, prefix])
+def encrypt_ecb_oracle(prefix, text, random_aes_key, random_prepend=False):
+
+    if random_prepend:
+        _random_prepend = generate_random_bytes(random.randrange(10, 32))
+        message = _random_prepend.join([prefix, text])
+    else:
+        message = b"".join([prefix, text])
 
     # encrypt ECB
     keysize = len(random_aes_key)
     blocks = [message[n:n + keysize] for n in range(0, len(message), keysize)]
     encrypted = []
     for block in blocks:
-        padded_block = pkcs_7_padding(block, keysize)[0]
-        _text = encrypt_aes(padded_block, random_aes_key)
-        # print(binascii.hexlify(_text))
-        encrypted.append(_text)
+        padded_blocks = pkcs_7_padding(block, keysize)
+        for padded_block in padded_blocks:
+            text = encrypt_aes(padded_block, random_aes_key)
+            encrypted.append(text)
 
     return encrypted
 
@@ -621,12 +626,13 @@ def decrypt_ecb_message_without_key(encrypted_blocks, base64_decoded, random_aes
                     if len(text2) <= key_length + len(block_text):
 
                         result2 = encrypt_ecb_oracle(text2, base64_decoded, random_aes_key)
-
-                        if block_idx < len(encrypted_blocks) and result[block_idx] == result2[block_idx]:
-                            current_block.append(chr(index).encode())
-                            # print(block_idx, len(text2), chr(index), result2[block_idx])
+                        try:
+                            if block_idx < len(encrypted_blocks) and result[block_idx] == result2[block_idx]:
+                                current_block.append(chr(index).encode())
+                                # print(block_idx, len(text2), chr(index), result2[block_idx])
+                                _decrypted = True
+                        except:
                             _decrypted = True
-
         collector.append(b"".join(current_block))
     print("Decrypted: {}".format(b''.join(collector)))
 
@@ -782,8 +788,26 @@ def challenge_13():
     print("\n{}".format(for_me))
 
 
-if __name__ == "__main__":
+def challenge_14():
+    """
+    Take your oracle function from #12. Now generate a random count of random bytes and prepend this string to every
+    plaintext. You are now doing:
 
+    AES-128-ECB(random-prefix || attacker-controlled || target-bytes, random-key)
+
+    :return:
+    """
+
+    base64_encoded = 'Um9sbGluJyBpbiBteSA1LjAKV2l0aCBteSByYWctdG9wIGRvd24gc28gbXkgaGFpciBjYW4gYmxvdwpUaGUgZ2lybGllcyBvbiBzdGFuZGJ5IHdhdmluZyBqdXN0IHRvIHNheSBoaQpEaWQgeW91IHN0b3A/IE5vLCBJIGp1c3QgZHJvdmUgYnkK'
+    base64_decoded = base64.b64decode(base64_encoded)
+    random_aes_key = generate_random_bytes(16)
+
+    encrypted_blocks = encrypt_ecb_oracle(b'', base64_decoded, random_aes_key, random_prepend=True)
+
+    decrypt_ecb_message_without_key(encrypted_blocks, base64_decoded, random_aes_key)
+
+if __name__ == "__main__":
+    """
     challenge_01()
     challenge_02()
     challenge_03()
@@ -797,3 +821,5 @@ if __name__ == "__main__":
     challenge_11()
     challenge_12()
     challenge_13()
+    """
+    challenge_14()

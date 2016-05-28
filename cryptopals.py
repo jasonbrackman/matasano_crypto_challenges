@@ -567,13 +567,12 @@ def challenge_11():
         # print(test)
 
 
-def encrypt_ecb_oracle(prefix, text, random_aes_key, random_prepend=False):
+def encrypt_ecb_oracle(prefix, text, random_aes_key, random_prepend=None):
 
     if random_prepend:
-        _random_prepend = generate_random_bytes(random.randrange(10, 32))
-        message = _random_prepend.join([prefix, text])
+        message = b''.join([random_prepend, prefix, text])
     else:
-        message = b"".join([prefix, text])
+        message = b''.join([prefix, text])
 
     # encrypt ECB
     keysize = len(random_aes_key)
@@ -591,29 +590,34 @@ def encrypt_ecb_oracle(prefix, text, random_aes_key, random_prepend=False):
 def discover_block_size_and_if_ecb(encrypted_blocks):
     encrypted_string = b''.join(encrypted_blocks)
     key_length = get_secret_key_length_from_encrypted_data(encrypted_string)
-    print("Number of blocks: {}".format(len(encrypted_blocks)))
+    # print("Number of blocks: {}".format(len(encrypted_blocks)))
     is_ecb = detect_ecb_use(encrypted_string, key_length)
 
     return key_length, is_ecb
 
 
-def decrypt_ecb_message_without_key(encrypted_blocks, base64_decoded, random_aes_key):
+
+def decrypt_ecb_message_without_key(encrypted_blocks, base64_decoded, random_aes_key, random_prepend=None):
     # Create encrypted content
     text_large = b'A' * 512
-    encr_large = encrypt_ecb_oracle(text_large, base64_decoded, random_aes_key)
+    encr_large = encrypt_ecb_oracle(text_large, base64_decoded, random_aes_key, random_prepend=random_prepend)
     key_length, is_ecb = discover_block_size_and_if_ecb(encr_large)
     print("Key Length: {0}\nIs ECB: {1}\n".format(key_length, is_ecb))
+
+    prepend_padding_count = obtain_prepend_padding_count(base64_decoded, random_aes_key, prepend=random_prepend)
 
     collector = list()
 
     for block_idx in range(len(encrypted_blocks)):
-        block_text = b'A' * key_length * block_idx
+        block_text = (b'B' * (prepend_padding_count - key_length)) + b'A' * key_length * block_idx
 
         current_block = list()
         for length in reversed(range(key_length)):
             text = block_text + b'A' * length  # one block short
 
-            result = encrypt_ecb_oracle(text, base64_decoded[block_idx * 16:], random_aes_key)
+            result = encrypt_ecb_oracle(text, base64_decoded[block_idx * 16:], random_aes_key, random_prepend=random_prepend)
+            if prepend_padding_count > 0:
+                result = result[2:]
 
             decrypted_block = b''.join(current_block)
             _decrypted = False
@@ -625,7 +629,9 @@ def decrypt_ecb_message_without_key(encrypted_blocks, base64_decoded, random_aes
 
                     if len(text2) <= key_length + len(block_text):
 
-                        result2 = encrypt_ecb_oracle(text2, base64_decoded, random_aes_key)
+                        result2 = encrypt_ecb_oracle(text2, base64_decoded, random_aes_key, random_prepend=random_prepend)
+                        if prepend_padding_count > 0:
+                            result2 = result2[2:]
                         try:
                             if block_idx < len(encrypted_blocks) and result[block_idx] == result2[block_idx]:
                                 current_block.append(chr(index).encode())
@@ -788,6 +794,62 @@ def challenge_13():
     print("\n{}".format(for_me))
 
 
+def obtain_ecb_padding_count(message, key, prepend=None) -> int:
+    text_large = b'A' * 512
+    encr_large = encrypt_ecb_oracle(b'', text_large, key, random_prepend=prepend)
+    key_length, is_ecb = discover_block_size_and_if_ecb(encr_large)
+
+    assert is_ecb is True, "ECB not present - unable to discover key length."
+
+    result = 0
+    original = encrypt_ecb_oracle(b'', message, key, random_prepend=prepend)
+    original_length = len(original)
+    for index in range(key_length):
+        prefix = b'X'*index
+        new = encrypt_ecb_oracle(prefix, message, key, random_prepend=prepend)
+        if len(new) > original_length:
+            result = index-1
+            break
+    #final_test = encrypt_ecb_oracle(b'A'*18, message, key, random_prepend=prepend)
+    #print("Final Test: {}, {}".format(len(final_test), original_length))
+    return result
+
+
+def obtain_prepend_padding_count(message, key, prepend=None) -> int:
+
+    counter = 0
+
+    # Go through a single block and attempt to crack it.
+    # if the last byte is not as expected.  Try one less - repeat
+    # hit a block of expectation -- there is a 1/255 shot that it is correct length.
+    text_large = b'A' * 256 + message
+    encr_large = encrypt_ecb_oracle(b'', text_large, key, random_prepend=prepend)
+    key_length, is_ecb = discover_block_size_and_if_ecb(encr_large)
+    # print("KEyLeNgtH: {}".format(key_length))
+
+    assert is_ecb is True, "ECB not present - unable to discover key length."
+    for index in range(0, 5):
+        prefix = b'A' * (key_length * index)
+        result = encrypt_ecb_oracle(prefix, message, key, random_prepend=prepend)
+        blocks_match = result[1] == result[2]
+
+        if blocks_match:
+            # print('Block #{} - {}'.format(index, blocks_match))
+            reducing_match = True
+            while reducing_match is True:
+                prefix = prefix[0:(len(prefix) - 1)]
+                result = encrypt_ecb_oracle(prefix, message, key, random_prepend=prepend)
+                reducing_match = result[1] == result[2]
+                if not reducing_match:
+                    # print('\tPrePadding: {}'.format(counter))
+                    break
+                counter += 1
+            counter -= key_length * index
+            break
+    # print(counter)
+    return abs(counter)
+
+
 def challenge_14():
     """
     Take your oracle function from #12. Now generate a random count of random bytes and prepend this string to every
@@ -801,13 +863,18 @@ def challenge_14():
     base64_encoded = 'Um9sbGluJyBpbiBteSA1LjAKV2l0aCBteSByYWctdG9wIGRvd24gc28gbXkgaGFpciBjYW4gYmxvdwpUaGUgZ2lybGllcyBvbiBzdGFuZGJ5IHdhdmluZyBqdXN0IHRvIHNheSBoaQpEaWQgeW91IHN0b3A/IE5vLCBJIGp1c3QgZHJvdmUgYnkK'
     base64_decoded = base64.b64decode(base64_encoded)
     random_aes_key = generate_random_bytes(16)
+    random_prepend = generate_random_bytes(random.randint(1, 15))
+    encrypted_blocks = encrypt_ecb_oracle(b'', base64_decoded, random_aes_key, random_prepend=random_prepend)
 
-    encrypted_blocks = encrypt_ecb_oracle(b'', base64_decoded, random_aes_key, random_prepend=True)
+    print("Padding: {}".format(obtain_ecb_padding_count(base64_decoded, random_aes_key, prepend=random_prepend)))
+    obtain_prepend_padding_count(base64_decoded, random_aes_key, prepend=random_prepend)
+    print(decrypt_aes(b''.join(encrypted_blocks), random_aes_key))
+    #print("Original Encrypted Blocks: {}".format(len(encrypted_blocks)))
 
-    decrypt_ecb_message_without_key(encrypted_blocks, base64_decoded, random_aes_key)
+    decrypt_ecb_message_without_key(encrypted_blocks, base64_decoded, random_aes_key, random_prepend=random_prepend)
 
 if __name__ == "__main__":
-    """
+
     challenge_01()
     challenge_02()
     challenge_03()
@@ -821,5 +888,4 @@ if __name__ == "__main__":
     challenge_11()
     challenge_12()
     challenge_13()
-    """
     challenge_14()

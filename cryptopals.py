@@ -37,26 +37,26 @@ letters = {' ': 0.13000000,
            'z': 0.00079130}
 
 
-def convert_bytes_to_base64(input_string):
+def convert_bytes_to_base64(input_string: bytes) -> bytes:
     _hex = binascii.unhexlify(input_string)
     _b64 = binascii.b2a_base64(_hex)
     return _b64
 
 
-def decrypt_fixed_xor(input, key):
+def decrypt_fixed_xor(message, key):
     """
     Decode hex value and xor'd against the key.
     - running a binascii.unhexlify(hex) on the result will reveal the ascii readable content.
 
-    :param input: Expecting a hex value as string or bytes
+    :param message: Expecting a hex value as string or bytes
     :param key: Expecting a hex value as string or bytes
     :return: a hex value in bytes
     """
 
-    if type(input) == str:
-        input = bytes.fromhex(input)
-    elif type(input) == int:
-        input = input.to_bytes(2, 'big')
+    if type(message) == str:
+        message = bytes.fromhex(message)
+    elif type(message) == int:
+        message = message.to_bytes(2, 'big')
 
     if type(key) == str:
         key = binascii.a2b_hex(key)
@@ -64,16 +64,16 @@ def decrypt_fixed_xor(input, key):
         key = key.to_bytes(2, 'big')
 
     output = ""
-    if len(input) == len(key):
-        output = bytes([x ^ y for (x, y) in zip(input, key)])
+    if len(message) == len(key):
+        output = bytes([x ^ y for (x, y) in zip(message, key)])
     elif len(key) == 1:
-        padded_list = key * len(input)
-        output = bytes([x ^ y for (x, y) in zip(input, padded_list)])
+        padded_list = key * len(message)
+        output = bytes([x ^ y for (x, y) in zip(message, padded_list)])
 
     return binascii.b2a_hex(output)
 
 
-def score_text(decrypted):
+def score_text(decrypted: bytes) -> float:
     scores = []
 
     for item in decrypted.decode('utf-8').lower():
@@ -88,7 +88,7 @@ def score_text(decrypted):
     return sum(scores)
 
 
-def find_key_and_decrypt_message(data):
+def find_key_and_decrypt_fixed_xor_message(data):
     """
     Devise some method for "scoring" a piece of English plaintext. Character frequency is a good metric.
     Evaluate each output and choose the one with the best score.
@@ -182,7 +182,7 @@ def get_secret_key_length_from_encrypted_data(text: bytes) -> int:
     return key_length
 
 
-def challenge_01():
+def challenge_01() -> None:
     input_string = b"49276d206b696c6c696e6720796f757220627261696e206c696b65206120706f69736f6e6f7573206d757368726f6f6d"
     # print(binascii.unhexlify(input_string))
     x = convert_bytes_to_base64(input_string)
@@ -190,7 +190,7 @@ def challenge_01():
     assert x.strip() == b"SSdtIGtpbGxpbmcgeW91ciBicmFpbiBsaWtlIGEgcG9pc29ub3VzIG11c2hyb29t"
 
 
-def challenge_02():
+def challenge_02() -> None:
     data = "1c0111001f010100061a024b53535009181c"
     key = "686974207468652062756c6c277320657965"
 
@@ -199,7 +199,7 @@ def challenge_02():
     assert decrypted == b'746865206b696420646f6e277420706c6179'
 
 
-def challenge_03():
+def challenge_03() -> None:
     """
     Single-byte XOR cipher
     The hex encoded string:
@@ -212,11 +212,11 @@ def challenge_03():
     How?
     """
     data = "1b37373331363f78151b7f2b783431333d78397828372d363c78373e783a393b3736"
-    key, decrypted_message = find_key_and_decrypt_message(data)
+    key, decrypted_message = find_key_and_decrypt_fixed_xor_message(data)
     assert decrypted_message == b"Cooking MC's like a pound of bacon"
 
 
-def challenge_04():
+def challenge_04() -> None:
     """
     Detect single-character XOR
     One of the 60-character strings in this file has been encrypted by single-character XOR.
@@ -241,7 +241,7 @@ def challenge_04():
         for line in handle.readlines():
             line = binascii.a2b_hex(line.strip())
 
-            attempt = find_key_and_decrypt_message(line)
+            attempt = find_key_and_decrypt_fixed_xor_message(line)
             key, decrypted = attempt
             words = decrypted.decode('utf-8').split()
             english = [word for word in words if word in keywords]
@@ -249,7 +249,7 @@ def challenge_04():
                 assert decrypted == b'Now that the party is jumping\n'
 
 
-def challenge_05():
+def challenge_05() -> None:
     """
     Implement repeating-key XOR
     Here is the opening stanza of an important work of the English language:
@@ -259,24 +259,23 @@ def challenge_05():
     Encrypt it, under the key "ICE", using repeating-key XOR.
 
     In repeating-key XOR, you'll sequentially apply each byte of the key;
-    the first byte of plaintext will be XOR'd against I, the next C, the next E, then I again for the 4th byte, and so on.
+    the first byte of plaintext will be XOR'd against I, the next C, the next E, then I again for the 4th byte, etc.
 
     It should come out to:
 
     0b3637272a2b2e63622c2e69692a23693a2a3c6324202d623d63343c2a26226324272765272
     a282b2f20430a652e2c652a3124333a653e2b2027630c692b20283165286326302e27282f
-    Encrypt a bunch of stuff using your repeating-key XOR function. Encrypt your mail.
-    Encrypt your password file. Your .sig file. Get a feel for it. I promise, we aren't wasting your time with this.
     """
 
-    test = b'0b3637272a2b2e63622c2e69692a23693a2a3c6324202d623d63343c2a26226324272765272a282b2f20430a652e2c652a3124333a653e2b2027630c692b20283165286326302e27282f'
+    test = b'0b3637272a2b2e63622c2e69692a23693a2a3c6324202d623d63343c2a26226324272765272' \
+           b'a282b2f20430a652e2c652a3124333a653e2b2027630c692b20283165286326302e27282f'
     line = b"Burning 'em, if you ain't quick and nimble\nI go crazy when I hear a cymbal"
 
     encrypt = encrypt_xor(line, b"ICE")
     assert encrypt == test
 
 
-def challenge_06():
+def challenge_06() -> None:
     with open("6.txt", 'r') as handle:
         text = binascii.a2b_base64(handle.read())
 
@@ -294,7 +293,7 @@ def challenge_06():
 
         values = list()
         for index, block in transposed.items():
-            values.append(find_key_and_decrypt_message(block)[0])
+            values.append(find_key_and_decrypt_fixed_xor_message(block)[0])
 
         result = [chr(itm) for itm in values]
         result = "".join(result)
@@ -314,21 +313,21 @@ def challenge_06():
         """
 
 
-def decrypt_aes(text, key):
+def decrypt_aes(text: bytes, key: bytes) -> bytes:
     cipher = AES.new(key, AES.MODE_ECB)
     result = cipher.decrypt(text)
 
     return result
 
 
-def encrypt_aes(encrypted, key):
+def encrypt_aes(encrypted: bytes, key: bytes) -> bytes:
     cipher = AES.new(key, AES.MODE_ECB)
     result = cipher.encrypt(encrypted)
 
     return result
 
 
-def challenge_07():
+def challenge_07() -> None:
     """
     AES in ECB mode
     The Base64-encoded content in this file has been encrypted via AES-128 in ECB mode under the key
@@ -364,7 +363,7 @@ def detect_ecb_use(text, keysize: int):
     return False
 
 
-def challenge_08():
+def challenge_08() -> None:
     """
     8.txt contains a bunch of hex-encoded ciphertexts.
     - One of them has been encrypted with ECB.
@@ -411,12 +410,30 @@ def pkcs_7_padding(text: bytes, pad: int) -> list:
     return results
 
 
-def challenge_09():
+def pkcs_7_padding_verification(block: bytes) -> str:
+    """
+    Takes a plaintext, determines if it has valid PKCS#7 padding, and strips the padding off.
+    :param block:
+    :return:
+    """
+    maximum_pad_length = len(block)
+    last_byte = block[-1]
+    if last_byte < maximum_pad_length and block[-last_byte:] != bytes([last_byte] * last_byte):
+        raise ValueError('Bad Padding')
+    elif last_byte >= maximum_pad_length:
+        result = block
+    else:
+        result = block[0:-last_byte]
+
+    return result
+
+
+def challenge_09() -> None:
     text = b'YELLOW SUBMARINE'
     print(pkcs_7_padding(text, 20))
 
 
-def encrypt_aes_with_custom_cbc(text, key, iv):
+def encrypt_aes_with_custom_cbc(text: bytes, key: bytes, iv: bytes):
     results = []
     keysize = len(key)
     blocks = [text[n:n + keysize] for n in range(0, len(text), keysize)]
@@ -431,7 +448,7 @@ def encrypt_aes_with_custom_cbc(text, key, iv):
     return results
 
 
-def decrypt_aes_with_custom_cbc(text, key, iv):
+def decrypt_aes_with_custom_cbc(text: bytes, key: bytes, iv: bytes):
     results = []
     keysize = len(key)
     blocks = [text[n:n + keysize] for n in range(0, len(text), keysize)]
@@ -447,7 +464,7 @@ def decrypt_aes_with_custom_cbc(text, key, iv):
     return results
 
 
-def challenge_10():
+def challenge_10() -> None:
     """
     CBC mode is a block cipher mode that allows us to encrypt irregularly-sized messages, despite the fact that a block
     cipher natively only transforms individual blocks.  In CBC mode, each ciphertext block is added to the next
@@ -480,11 +497,11 @@ def challenge_10():
     assert text == b"".join(encrypt)
 
 
-def generate_random_bytes(length):
+def generate_random_bytes(length: int) -> bytes:
     return os.urandom(length)
 
 
-def challenge_11():
+def challenge_11() -> object:
     """
     An ECB/CBC detection oracle
     Now that you have ECB and CBC working:
@@ -511,7 +528,7 @@ def challenge_11():
     :return:
     """
 
-    def encrypt_oracle(text):
+    def encrypt_oracle(text: bytes):
         random_aes_key = generate_random_bytes(16)
         prefix = generate_random_bytes(random.randint(5, 10))
         postfix = generate_random_bytes(random.randint(5, 10))
@@ -519,7 +536,7 @@ def challenge_11():
         message = b"".join([prefix, text, postfix])
 
         if random.randint(1, 2) == 2:
-            type = 'ECB'
+            encoding_type = 'ECB'
             # encrypt ECB
             keysize = len(random_aes_key)
             blocks = [text[n:n + keysize] for n in range(0, len(text), keysize)]
@@ -531,46 +548,26 @@ def challenge_11():
                 encrypted.append(text)
         else:
             # encrypt_CBC
-            type = 'CBC'
+            encoding_type = 'CBC'
             random_iv = generate_random_bytes(16)
             encrypted = encrypt_aes_with_custom_cbc(message, random_aes_key, random_iv)
 
-        return encrypted, type
+        return encrypted, encoding_type
 
     for x in range(10):
-        test, type = encrypt_oracle(b"""This is a long story of two people who don't know each other, but something
-        imortant needs to be told.  There once was a witch who lived in a shoe and she didn't have kids and didn't know
-        what to do - but you know it was probably pretty important for her to do the things that she did cuz they told
-        so many stories about her. Barbeques can be fun they tell me.  Is there nothing repeatable in this story? The
-        only hting I have left is some additional words. What the hell should i do now -- cuz this is a long as heck
-        story. This is something that is alrady a fairly good length -- it is hard for me to believe that shorter
-        messages aren't going to be sent.  I guess if you are publishing a manifesto or something then the problem
-        occurs. I mentioned a witch and some dogs and some kids.  Does that help? Tell me what I should do? Holy hell.
-        What else must I do to prove that there is some repetition in the file? this seems pretty useless.
-
-        This is a very long story of two people who don't know each other, but something important needs to be told.
-        There once shoe and she didn't have kids and didn't know what to do. Something repeatable some random stuff
-        was a witch who lived in a shoe and she didn't have kids and didn't know what to do. Something repeatable has to
-        exist here or there simply won't be a way to determine if the text is repeating since it is stateless and
-        deterministic. So now I'm just rambling on and on and figuring out what I should write -- but gotta admit this is
-        prety crazy now.  I don't remember ever having to write an email of this length -- so if this is the weakness,
-        then we are in a lot of trouble.One thing - is there a way to prevent it from dictating the directory - I set
-        up all my substance directories within my Max project folders. Each object has it's own folder within the main
-        substance folder - that's always been my workflow. But with this bridge it insists on creating a SendtoSubstance
-        folder with an additional folder (exported name) with in that one. I would like to be able to just direct the
-        files to the folder of my chosing. Now I have to move them then delete the SendtoSubstance folder.""")
+        test, is_ecb = encrypt_oracle(b'A'*212)
         testing = b''.join(test)
 
         testing = binascii.hexlify(testing)
-        print("Content encrypted as {0}.  Is ECB?: {1}".format(type, detect_ecb_use(testing, len(test[0]))))
+        print("Content encrypted as {0}.  Is ECB?: {1}".format(is_ecb, detect_ecb_use(testing, len(test[0]))))
 
         # print(test)
 
 
-def encrypt_ecb_oracle(prefix, text, random_aes_key, random_prepend=None):
+def encrypt_ecb_oracle(prefix: bytes, text: bytes, random_aes_key: bytes, prepend: bytes = None):
 
-    if random_prepend:
-        message = b''.join([random_prepend, prefix, text])
+    if prepend:
+        message = b''.join([prepend, prefix, text])
     else:
         message = b''.join([prefix, text])
 
@@ -596,15 +593,23 @@ def discover_block_size_and_if_ecb(encrypted_blocks):
     return key_length, is_ecb
 
 
+def decrypt_ecb_message_without_key(encrypted_blocks, base64_decoded: bytes, random_aes_key: bytes, prepend=None):
+    """
+    Built for challenge #12 and #14
 
-def decrypt_ecb_message_without_key(encrypted_blocks, base64_decoded, random_aes_key, random_prepend=None):
+    :param encrypted_blocks:
+    :param base64_decoded:
+    :param random_aes_key:
+    :param prepend:
+    :return:
+    """
     # Create encrypted content
     text_large = b'A' * 512
-    encr_large = encrypt_ecb_oracle(text_large, base64_decoded, random_aes_key, random_prepend=random_prepend)
+    encr_large = encrypt_ecb_oracle(text_large, base64_decoded, random_aes_key, prepend=prepend)
     key_length, is_ecb = discover_block_size_and_if_ecb(encr_large)
     print("Key Length: {0}\nIs ECB: {1}\n".format(key_length, is_ecb))
 
-    prepend_padding_count = obtain_prepend_padding_count(base64_decoded, random_aes_key, prepend=random_prepend)
+    prepend_padding_count = obtain_ecb_prepend_padding_count(base64_decoded, random_aes_key, prepend=prepend)
 
     collector = list()
 
@@ -615,7 +620,7 @@ def decrypt_ecb_message_without_key(encrypted_blocks, base64_decoded, random_aes
         for length in reversed(range(key_length)):
             text = block_text + b'A' * length  # one block short
 
-            result = encrypt_ecb_oracle(text, base64_decoded[block_idx * 16:], random_aes_key, random_prepend=random_prepend)
+            result = encrypt_ecb_oracle(text, base64_decoded[block_idx * 16:], random_aes_key, prepend=prepend)
             if prepend_padding_count > 0:
                 result = result[2:]
 
@@ -629,21 +634,24 @@ def decrypt_ecb_message_without_key(encrypted_blocks, base64_decoded, random_aes
 
                     if len(text2) <= key_length + len(block_text):
 
-                        result2 = encrypt_ecb_oracle(text2, base64_decoded, random_aes_key, random_prepend=random_prepend)
+                        result2 = encrypt_ecb_oracle(text2, base64_decoded, random_aes_key, prepend=prepend)
                         if prepend_padding_count > 0:
                             result2 = result2[2:]
+
                         try:
                             if block_idx < len(encrypted_blocks) and result[block_idx] == result2[block_idx]:
                                 current_block.append(chr(index).encode())
                                 # print(block_idx, len(text2), chr(index), result2[block_idx])
                                 _decrypted = True
-                        except:
+                        except IndexError as e:
+                            print(e)
                             _decrypted = True
+
         collector.append(b"".join(current_block))
     print("Decrypted: {}".format(b''.join(collector)))
 
 
-def challenge_12():
+def challenge_12() -> None:
     """
     Byte - at - a - time
 
@@ -683,7 +691,8 @@ def challenge_12():
     6. Repeat for the next byte.
     """
 
-    base64_encoded = 'Um9sbGluJyBpbiBteSA1LjAKV2l0aCBteSByYWctdG9wIGRvd24gc28gbXkgaGFpciBjYW4gYmxvdwpUaGUgZ2lybGllcyBvbiBzdGFuZGJ5IHdhdmluZyBqdXN0IHRvIHNheSBoaQpEaWQgeW91IHN0b3A/IE5vLCBJIGp1c3QgZHJvdmUgYnkK'
+    base64_encoded = 'Um9sbGluJyBpbiBteSA1LjAKV2l0aCBteSByYWctdG9wIGRvd24gc28gbXkgaGFpciBjYW4gYmxvdwpUaGUgZ2lybGll' \
+                     'cyBvbiBzdGFuZGJ5IHdhdmluZyBqdXN0IHRvIHNheSBoaQpEaWQgeW91IHN0b3A/IE5vLCBJIGp1c3QgZHJvdmUgYnkK'
     base64_decoded = base64.b64decode(base64_encoded)
     random_aes_key = generate_random_bytes(16)
 
@@ -692,10 +701,9 @@ def challenge_12():
     decrypt_ecb_message_without_key(encrypted_blocks, base64_decoded, random_aes_key)
 
 
-def challenge_13():
+def create_structured_cookie(from_email: str) -> collections.OrderedDict:
     """
-    ECB cut-and-paste
-    Write a k=v parsing routine, as if for a structured cookie. The routine should take:
+    A k=v parsing routine for a structured cookie. The routine takes:
 
     foo=bar&baz=qux&zap=zazzle
     ... and produce:
@@ -705,21 +713,28 @@ def challenge_13():
       baz: 'qux',
       zap: 'zazzle'
     }
-    (you know, the object; I don't care if you convert it to JSON).
+
+    :param from_email:
+    :return:
+    """
+    kv = collections.OrderedDict()
+    items = from_email.split('&')
+    for item in items:
+        stuff = item.split('=')
+        kv[stuff[0]] = stuff[1]
+
+    return kv
+
+
+def challenge_13() -> None:
+    """
+    ECB cut-and-paste
+
     :return:
     """
 
-    def create_structured_cookie(text):
-        kv = collections.OrderedDict()
-        items = text.split('&')
-        for item in items:
-            stuff = item.split('=')
-            kv[stuff[0]] = stuff[1]
-
-        return kv
-
-    def profile_for(email):
-        '''
+    def profile_for(email: str):
+        """
         Now write a function that encodes a user profile in that format, given an email address.
 
         You should have something like:
@@ -740,7 +755,7 @@ def challenge_13():
         Eat them, quote them, whatever you want to do,
         but don't let people set their email address to "foo@bar.com&role=admin".
         :return:
-        '''
+        """
 
         # Eat illegals
         illegals = '&='
@@ -781,41 +796,41 @@ def challenge_13():
 
     print("For Attacker: {}".format(for_attacker))
 
-    _ = pkcs_7_padding(for_attacker, len(random_aes_key))
+    to_be_swizzled = pkcs_7_padding(for_attacker, len(random_aes_key))
 
     # Reorder the ECB Blocks and throw away the regular user account :)
     final = list()
-    final.append(_[0])
-    final.append(_[1])
-    final.append(_[3])
-    final.append(_[2])
+    final.append(to_be_swizzled[0])
+    final.append(to_be_swizzled[1])
+    final.append(to_be_swizzled[3])
+    final.append(to_be_swizzled[2])
 
     for_me = decrypt_aes(b''.join(final), random_aes_key)
     print("\n{}".format(for_me))
 
 
-def obtain_ecb_padding_count(message, key, prepend=None) -> int:
+def obtain_ecb_pkcs7_count(message, key, prepend=None) -> int:
     text_large = b'A' * 512
-    encr_large = encrypt_ecb_oracle(b'', text_large, key, random_prepend=prepend)
+    encr_large = encrypt_ecb_oracle(b'', text_large, key, prepend=prepend)
     key_length, is_ecb = discover_block_size_and_if_ecb(encr_large)
 
     assert is_ecb is True, "ECB not present - unable to discover key length."
 
     result = 0
-    original = encrypt_ecb_oracle(b'', message, key, random_prepend=prepend)
+    original = encrypt_ecb_oracle(b'', message, key, prepend=prepend)
     original_length = len(original)
     for index in range(key_length):
         prefix = b'X'*index
-        new = encrypt_ecb_oracle(prefix, message, key, random_prepend=prepend)
+        new = encrypt_ecb_oracle(prefix, message, key, prepend=prepend)
         if len(new) > original_length:
             result = index-1
             break
-    #final_test = encrypt_ecb_oracle(b'A'*18, message, key, random_prepend=prepend)
-    #print("Final Test: {}, {}".format(len(final_test), original_length))
+    # final_test = encrypt_ecb_oracle(b'A'*18, message, key, random_prepend=prepend)
+    # print("Final Test: {}, {}".format(len(final_test), original_length))
     return result
 
 
-def obtain_prepend_padding_count(message, key, prepend=None) -> int:
+def obtain_ecb_prepend_padding_count(message, key, prepend=None) -> int:
 
     counter = 0
 
@@ -823,14 +838,14 @@ def obtain_prepend_padding_count(message, key, prepend=None) -> int:
     # if the last byte is not as expected.  Try one less - repeat
     # hit a block of expectation -- there is a 1/255 shot that it is correct length.
     text_large = b'A' * 256 + message
-    encr_large = encrypt_ecb_oracle(b'', text_large, key, random_prepend=prepend)
+    encr_large = encrypt_ecb_oracle(b'', text_large, key, prepend=prepend)
     key_length, is_ecb = discover_block_size_and_if_ecb(encr_large)
     # print("KEyLeNgtH: {}".format(key_length))
 
     assert is_ecb is True, "ECB not present - unable to discover key length."
     for index in range(0, 5):
         prefix = b'A' * (key_length * index)
-        result = encrypt_ecb_oracle(prefix, message, key, random_prepend=prepend)
+        result = encrypt_ecb_oracle(prefix, message, key, prepend=prepend)
         blocks_match = result[1] == result[2]
 
         if blocks_match:
@@ -838,7 +853,7 @@ def obtain_prepend_padding_count(message, key, prepend=None) -> int:
             reducing_match = True
             while reducing_match is True:
                 prefix = prefix[0:(len(prefix) - 1)]
-                result = encrypt_ecb_oracle(prefix, message, key, random_prepend=prepend)
+                result = encrypt_ecb_oracle(prefix, message, key, prepend=prepend)
                 reducing_match = result[1] == result[2]
                 if not reducing_match:
                     # print('\tPrePadding: {}'.format(counter))
@@ -850,7 +865,7 @@ def obtain_prepend_padding_count(message, key, prepend=None) -> int:
     return abs(counter)
 
 
-def challenge_14():
+def challenge_14() -> object:
     """
     Take your oracle function from #12. Now generate a random count of random bytes and prepend this string to every
     plaintext. You are now doing:
@@ -860,21 +875,40 @@ def challenge_14():
     :return:
     """
 
-    base64_encoded = 'Um9sbGluJyBpbiBteSA1LjAKV2l0aCBteSByYWctdG9wIGRvd24gc28gbXkgaGFpciBjYW4gYmxvdwpUaGUgZ2lybGllcyBvbiBzdGFuZGJ5IHdhdmluZyBqdXN0IHRvIHNheSBoaQpEaWQgeW91IHN0b3A/IE5vLCBJIGp1c3QgZHJvdmUgYnkK'
+    base64_encoded = 'Um9sbGluJyBpbiBteSA1LjAKV2l0aCBteSByYWctdG9wIGRvd24gc28gbXkgaGFpciBjYW4gYmxvdwpUaGUgZ2lybGll' \
+                     'cyBvbiBzdGFuZGJ5IHdhdmluZyBqdXN0IHRvIHNheSBoaQpEaWQgeW91IHN0b3A/IE5vLCBJIGp1c3QgZHJvdmUgYnkK'
     base64_decoded = base64.b64decode(base64_encoded)
     random_aes_key = generate_random_bytes(16)
     random_prepend = generate_random_bytes(random.randint(1, 15))
-    encrypted_blocks = encrypt_ecb_oracle(b'', base64_decoded, random_aes_key, random_prepend=random_prepend)
+    encrypted_blocks = encrypt_ecb_oracle(b'', base64_decoded, random_aes_key, prepend=random_prepend)
 
-    print("Padding: {}".format(obtain_ecb_padding_count(base64_decoded, random_aes_key, prepend=random_prepend)))
-    obtain_prepend_padding_count(base64_decoded, random_aes_key, prepend=random_prepend)
+    print("Padding: {}".format(obtain_ecb_pkcs7_count(base64_decoded, random_aes_key, prepend=random_prepend)))
+    obtain_ecb_prepend_padding_count(base64_decoded, random_aes_key, prepend=random_prepend)
     print(decrypt_aes(b''.join(encrypted_blocks), random_aes_key))
-    #print("Original Encrypted Blocks: {}".format(len(encrypted_blocks)))
+    # print("Original Encrypted Blocks: {}".format(len(encrypted_blocks)))
 
-    decrypt_ecb_message_without_key(encrypted_blocks, base64_decoded, random_aes_key, random_prepend=random_prepend)
+    decrypt_ecb_message_without_key(encrypted_blocks, base64_decoded, random_aes_key, prepend=random_prepend)
+
+
+def challenge_15() -> None:
+    tests = [b"ICE ICE BABY\x04\x04\x04\x04",
+             b"ICE ICE BABY\x05\x05\x05\x05",
+             b"ICE ICE BABY\x01\x02\x03\x04",
+             b"I\x0f\x0f\x0f\x0f\x0f\x0f\x0f\x0f\x0f\x0f\x0f\x0f\x0f\x0f\x0f",
+             b"YELLOW SUBMARINE"]
+    for test in tests:
+        try:
+            print(pkcs_7_padding_verification(test))
+        except ValueError as e:
+            print(e)
+
+
+def challenge_16() -> None:
+    pass
 
 if __name__ == "__main__":
-
+    """
+    # Set #1
     challenge_01()
     challenge_02()
     challenge_03()
@@ -883,9 +917,15 @@ if __name__ == "__main__":
     challenge_06()
     challenge_07()
     challenge_08()
+
+    # set #2
     challenge_09()
     challenge_10()
     challenge_11()
     challenge_12()
     challenge_13()
     challenge_14()
+    """
+    challenge_15()
+
+    challenge_16()

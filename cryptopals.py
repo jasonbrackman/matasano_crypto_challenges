@@ -117,23 +117,20 @@ def find_key_and_decrypt_fixed_xor_message(data):
     return _key, _decrypted
 
 
-def decrypt_xor(data: bytes, key: bytes) -> bytes:
-    # input = binascii.unhexlify(input)
+def decrypt_xor(message: bytes, key: bytes) -> bytes:
+
     keys = itertools.cycle(key)
 
-    a3 = bytes(x ^ y for (x, y) in zip(data, keys))
+    a3 = bytes(x ^ y for x, y in zip(message, keys))
 
     return a3
 
 
-def encrypt_xor(input: bytes, key: bytes):
-    # ensure we are working with bytes
-    if type(input) == str:
-        input = bytes(input, 'ascii')
+def encrypt_xor(message: bytes, key: bytes) -> bytes:
 
     keys = itertools.cycle(key)
 
-    output = bytes([x ^ y for (x, y) in zip(input, keys)])
+    output = bytes(x ^ y for x, y in zip(message, keys))
 
     return binascii.hexlify(output)
 
@@ -433,10 +430,11 @@ def challenge_09() -> None:
     print(pkcs_7_padding(text, 20))
 
 
-def encrypt_aes_with_custom_cbc(text: bytes, key: bytes, iv: bytes):
+def encrypt_aes_with_custom_cbc(text: bytes, key: bytes, iv: bytes) -> list:
     results = []
     keysize = len(key)
     blocks = [text[n:n + keysize] for n in range(0, len(text), keysize)]
+
     for block in blocks:
         padded_block = pkcs_7_padding(block, keysize)[0]
         xor_encrypt = encrypt_xor(padded_block, iv)
@@ -904,10 +902,75 @@ def challenge_15() -> None:
 
 
 def challenge_16() -> None:
-    pass
-
-if __name__ == "__main__":
     """
+    CBC bitflipping attacks
+    Generate a random AES key.
+
+    Combine your padding code and CBC code to write two functions.
+
+    The first function should take an arbitrary input string, prepend the string:
+
+    "comment1=cooking%20MCs;userdata="
+    .. and append the string:
+
+    ";comment2=%20like%20a%20pound%20of%20bacon"
+    The function should quote out the ";" and "=" characters.
+
+    The function should then pad out the input to the 16-byte AES block length and encrypt it under the random AES key.
+
+    The second function should decrypt the string and look for the characters ";admin=true;" (or, equivalently, decrypt,
+    split the string on ";", convert each resulting string into 2-tuples, and look for the "admin" tuple).
+
+    Return true or false based on whether the string exists.
+
+    If you've written the first function properly, it should not be possible to provide user input to it that will
+    generate the string the second function is looking for. We'll have to break the crypto to do that.
+
+    Instead, modify the ciphertext (without knowledge of the AES key) to accomplish this.
+
+    You're relying on the fact that in CBC mode, a 1-bit error in a ciphertext block:
+
+    Completely scrambles the block the error occurs in
+    Produces the identical 1-bit error(/edit) in the next ciphertext block.
+    Stop and think for a second.
+    Before you implement this attack, answer this question: why does CBC mode have this property?
+    :return:
+    """
+
+    def encrypt_using_CBC(message, key):
+        prepend = r"comment1=cooking%20MCs;userdata="
+        cleaned = message.replace(';', '').replace("=", "")
+        append = r";comment2=%20like%20a%20pound%20of%20bacon"
+
+        full_message = '{}{}{}'.format(prepend, cleaned, append).encode()
+
+        # blocks = pkcs_7_padding(full_message, len(key))
+
+        encrypted = encrypt_aes_with_custom_cbc(full_message, key, b'YELLOW SUBMARINE')
+
+        return encrypted
+
+    def is_admin(encrypted, random_aes_key):
+
+        decrypted = decrypt_aes_with_custom_cbc(b''.join(encrypted), random_aes_key, b'YELLOW SUBMARINE')
+        print('FUN: {}'.format(decrypted))
+        return b''.join(decrypted).find(b";admin=true;")
+
+    random_aes_key = generate_random_bytes(16)
+    encrypted = encrypt_using_CBC("?admin?true", random_aes_key)
+    decrypted = decrypt_aes_with_custom_cbc(b''.join(encrypted), random_aes_key, b'123')
+    print("OLD: {}".format(encrypted))
+
+    print("DEC: {}".format(decrypted))
+
+    # do something here to make ;admin=true exist in encrypted.
+    first_array = bytearray(encrypted[-1])
+    first_array[10] = first_array[10]
+    encrypted[-1] = bytes(first_array)
+    # print("NEW: {}".format(encrypted))
+    print(is_admin(encrypted, random_aes_key))
+if __name__ == "__main__":
+
     # Set #1
     challenge_01()
     challenge_02()
@@ -925,7 +988,10 @@ if __name__ == "__main__":
     challenge_12()
     challenge_13()
     challenge_14()
-    """
     challenge_15()
 
     challenge_16()
+
+    #test CBC
+    encrypt = encrypt_aes_with_custom_cbc(b'X' * 64, b"yellow submarine", b"def")
+    print(decrypt_aes_with_custom_cbc(b''.join(encrypt), b"yellow submarine", b'someone'))

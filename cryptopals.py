@@ -5,7 +5,10 @@ import base64
 from operator import itemgetter
 import itertools
 import collections
-from Crypto.Cipher import AES
+try:
+    from Crypto.Cipher import AES
+except ImportError:
+    from Cryptodome.Cipher import AES
 import os
 
 letters = {' ': 0.13000000,
@@ -80,7 +83,7 @@ def score_text(decrypted: bytes) -> float:
         try:
             scores.append(letters[item])
 
-        except KeyError as e:
+        except KeyError:
             if item in string.printable:
                 scores.append(0)
             else:
@@ -103,11 +106,11 @@ def find_key_and_decrypt_fixed_xor_message(data):
             decrypted = binascii.unhexlify(decrypted_xor)
             scores.append((key, score_text(decrypted), decrypted))
 
-        except binascii.Error as e:
+        except binascii.Error:
             pass
-        except UnicodeDecodeError as e:
+        except UnicodeDecodeError:
             pass
-        except AttributeError as e:
+        except AttributeError:
             pass
 
     if len(scores) == 0:
@@ -120,19 +123,20 @@ def find_key_and_decrypt_fixed_xor_message(data):
 def decrypt_xor(message: bytes, key: bytes) -> bytes:
 
     keys = itertools.cycle(key)
-
-    a3 = bytes(x ^ y for x, y in zip(message, keys))
-
-    return a3
-
-
-def encrypt_xor(message: bytes, key: bytes) -> bytes:
-
-    keys = itertools.cycle(key)
-
     output = bytes(x ^ y for x, y in zip(message, keys))
 
-    return binascii.hexlify(output)
+    return output
+
+
+def encrypt_xor(message: bytes, key: bytes, hexlify=True) -> bytes:
+
+    keys = itertools.cycle(key)
+    output = bytes(x ^ y for x, y in zip(message, keys))
+
+    if hexlify:
+        output = binascii.hexlify(output)
+
+    return output
 
 
 def compute_hamming_distance(s1: bytes, s2: bytes) -> int:
@@ -318,8 +322,10 @@ def decrypt_aes(text: bytes, key: bytes) -> bytes:
 
 
 def encrypt_aes(encrypted: bytes, key: bytes) -> bytes:
+    # print(len(key), key, encrypted)
     cipher = AES.new(key, AES.MODE_ECB)
     result = cipher.encrypt(encrypted)
+    # print("Decrypted here: {}".format(decrypt_xor(cipher.decrypt(result), b'1')))
 
     return result
 
@@ -436,12 +442,11 @@ def encrypt_aes_with_custom_cbc(text: bytes, key: bytes, iv: bytes) -> list:
     blocks = [text[n:n + keysize] for n in range(0, len(text), keysize)]
 
     for block in blocks:
-        padded_block = pkcs_7_padding(block, keysize)[0]
-        xor_encrypt = encrypt_xor(padded_block, iv)
-        unhexed = binascii.unhexlify(xor_encrypt)
-        encrypt = encrypt_aes(unhexed, key)
-        iv = encrypt
-        results.append(encrypt)
+        pad_block = pkcs_7_padding(block, keysize)[0]
+        xor_block = encrypt_xor(pad_block, iv, hexlify=False)
+        aes_block = encrypt_aes(xor_block, key)
+        iv = aes_block
+        results.append(aes_block)
 
     return results
 
@@ -454,7 +459,6 @@ def decrypt_aes_with_custom_cbc(text: bytes, key: bytes, iv: bytes):
     for block in blocks:
         aes_decrypt = decrypt_aes(block, key)
         xor_decrypt = decrypt_xor(aes_decrypt, iv)
-
         results.append(xor_decrypt)
 
         iv = block
@@ -688,7 +692,7 @@ def challenge_12() -> None:
        the first byte of unknown-string.
     6. Repeat for the next byte.
     """
-
+    print("\nChallenge_12() ------------------------------------------- ")
     base64_encoded = 'Um9sbGluJyBpbiBteSA1LjAKV2l0aCBteSByYWctdG9wIGRvd24gc28gbXkgaGFpciBjYW4gYmxvdwpUaGUgZ2lybGll' \
                      'cyBvbiBzdGFuZGJ5IHdhdmluZyBqdXN0IHRvIHNheSBoaQpEaWQgeW91IHN0b3A/IE5vLCBJIGp1c3QgZHJvdmUgYnkK'
     base64_decoded = base64.b64decode(base64_encoded)
@@ -776,7 +780,7 @@ def challenge_13() -> None:
     profile = profile_for(email)
     cookie = create_structured_cookie(profile)
 
-    print(cookie)
+    # print(cookie)
 
     '''
     Now, two more easy functions. Generate a random AES key, then:
@@ -804,7 +808,7 @@ def challenge_13() -> None:
     final.append(to_be_swizzled[2])
 
     for_me = decrypt_aes(b''.join(final), random_aes_key)
-    print("\n{}".format(for_me))
+    print("{}".format(for_me))
 
 
 def obtain_ecb_pkcs7_count(message, key, prepend=None) -> int:
@@ -959,18 +963,24 @@ def challenge_16() -> None:
     random_aes_key = generate_random_bytes(16)
     encrypted = encrypt_using_CBC("?admin?true", random_aes_key)
     decrypted = decrypt_aes_with_custom_cbc(b''.join(encrypted), random_aes_key, b'123')
-    print("OLD: {}".format(encrypted))
+    #print("OLD: {}".format(encrypted))
 
-    print("DEC: {}".format(decrypted))
+    #print("DEC: {}".format(decrypted))
 
     # do something here to make ;admin=true exist in encrypted.
-    first_array = bytearray(encrypted[-1])
-    first_array[10] = first_array[10]
-    encrypted[-1] = bytes(first_array)
-    # print("NEW: {}".format(encrypted))
-    print(is_admin(encrypted, random_aes_key))
-if __name__ == "__main__":
+    for index in range(0, 255):
+        first_array = bytearray(encrypted[1])
+        first_array[0] = index
+        first_array[6] = index
+        encrypted[1] = bytes(first_array)
 
+        #print("NEW: {}".format(encrypted))
+        result = is_admin(encrypted, random_aes_key)
+        if result is True:
+            print("Yes: {}".format(index))
+
+if __name__ == "__main__":
+    """
     # Set #1
     challenge_01()
     challenge_02()
@@ -989,9 +999,10 @@ if __name__ == "__main__":
     challenge_13()
     challenge_14()
     challenge_15()
-
+    """
     challenge_16()
 
     #test CBC
-    encrypt = encrypt_aes_with_custom_cbc(b'X' * 64, b"yellow submarine", b"def")
-    print(decrypt_aes_with_custom_cbc(b''.join(encrypt), b"yellow submarine", b'someone'))
+    #encrypt = encrypt_aes_with_custom_cbc(b'X' * 64, b"yellow submarine", b"def")
+    #print(encrypt)
+    #print(decrypt_aes_with_custom_cbc(b''.join(encrypt), b"yellow submarine", b'jasonisgreat'))

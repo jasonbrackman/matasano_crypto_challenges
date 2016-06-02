@@ -1,3 +1,4 @@
+import time
 import string
 import random
 import binascii
@@ -10,6 +11,18 @@ try:
 except ImportError:
     from Cryptodome.Cipher import AES
 import os
+
+
+def time_it(method):
+    def wrapper(*args, **kw):
+        startTime = int(round(time.time() * 1000))
+        result = method(*args, **kw)
+        endTime = int(round(time.time() * 1000))
+        print('Function Name: {0} - {1}ms'.format(method.__name__, endTime - startTime))
+        
+        return result
+
+    return wrapper
 
 letters = {' ': 0.13000000,
            'e': 0.12575645,
@@ -183,6 +196,7 @@ def get_secret_key_length_from_encrypted_data(text: bytes) -> int:
     return key_length
 
 
+@time_it
 def challenge_01() -> None:
     input_string = b"49276d206b696c6c696e6720796f757220627261696e206c696b65206120706f69736f6e6f7573206d757368726f6f6d"
     # print(binascii.unhexlify(input_string))
@@ -191,6 +205,7 @@ def challenge_01() -> None:
     assert x.strip() == b"SSdtIGtpbGxpbmcgeW91ciBicmFpbiBsaWtlIGEgcG9pc29ub3VzIG11c2hyb29t"
 
 
+@time_it
 def challenge_02() -> None:
     data = "1c0111001f010100061a024b53535009181c"
     key = "686974207468652062756c6c277320657965"
@@ -200,6 +215,7 @@ def challenge_02() -> None:
     assert decrypted == b'746865206b696420646f6e277420706c6179'
 
 
+@time_it
 def challenge_03() -> None:
     """
     Single-byte XOR cipher
@@ -217,6 +233,7 @@ def challenge_03() -> None:
     assert decrypted_message == b"Cooking MC's like a pound of bacon"
 
 
+@time_it
 def challenge_04() -> None:
     """
     Detect single-character XOR
@@ -250,6 +267,7 @@ def challenge_04() -> None:
                 assert decrypted == b'Now that the party is jumping\n'
 
 
+@time_it
 def challenge_05() -> None:
     """
     Implement repeating-key XOR
@@ -276,6 +294,7 @@ def challenge_05() -> None:
     assert encrypt == test
 
 
+@time_it
 def challenge_06() -> None:
     with open("6.txt", 'r') as handle:
         text = binascii.a2b_base64(handle.read())
@@ -330,6 +349,7 @@ def encrypt_aes(encrypted: bytes, key: bytes) -> bytes:
     return result
 
 
+@time_it
 def challenge_07() -> None:
     """
     AES in ECB mode
@@ -351,8 +371,8 @@ def challenge_07() -> None:
 
         result = decrypt_aes(text, key)
 
-        for line in result.decode('utf-8').split('\n'):
-            print(line)
+        lines = result.decode('utf-8').split('\n')
+        assert lines[0] == "I'm back and I'm ringin' the bell ", "Decrypt AES Failed."
 
 
 def detect_ecb_use(text, keysize: int):
@@ -366,6 +386,7 @@ def detect_ecb_use(text, keysize: int):
     return False
 
 
+@time_it
 def challenge_08() -> None:
     """
     8.txt contains a bunch of hex-encoded ciphertexts.
@@ -375,12 +396,16 @@ def challenge_08() -> None:
     - the same 16 byte plaintext block will always produce the same 16 byte ciphertext.
     """
 
+    ecb_encrypted_line = 132
+
     with open("8.txt", 'r') as handle:
         lines = handle.readlines()
         for ln, line in enumerate(lines):
             text = binascii.unhexlify(line.strip('\n'))
             if detect_ecb_use(text, 16):
-                print(ln, line)
+                break
+
+        assert ecb_encrypted_line == ln
 
 
 def pkcs_7_padding(text: bytes, pad: int) -> list:
@@ -431,9 +456,10 @@ def pkcs_7_padding_verification(block: bytes) -> str:
     return result
 
 
+@time_it
 def challenge_09() -> None:
     text = b'YELLOW SUBMARINE'
-    print(pkcs_7_padding(text, 20))
+    assert [b'YELLOW SUBMARINE\x04\x04\x04\x04'] == pkcs_7_padding(text, 20)
 
 
 def encrypt_aes_with_custom_cbc(text: bytes, key: bytes, iv: bytes) -> list:
@@ -466,6 +492,7 @@ def decrypt_aes_with_custom_cbc(text: bytes, key: bytes, iv: bytes):
     return results
 
 
+@time_it
 def challenge_10() -> None:
     """
     CBC mode is a block cipher mode that allows us to encrypt irregularly-sized messages, despite the fact that a block
@@ -482,7 +509,6 @@ def challenge_10() -> None:
     The file is intelligible (somewhat) when CBC decrypted against "YELLOW SUBMARINE" with an IV of all ASCII 0
     (\x00\x00\x00 &c)
     """
-
     key = b'YELLOW SUBMARINE'
     iv = bytes([0] * 16)
     test_text = b"this is my fancy text statement."
@@ -503,6 +529,7 @@ def generate_random_bytes(length: int) -> bytes:
     return os.urandom(length)
 
 
+@time_it
 def challenge_11() -> object:
     """
     An ECB/CBC detection oracle
@@ -561,7 +588,8 @@ def challenge_11() -> object:
         testing = b''.join(test)
 
         testing = binascii.hexlify(testing)
-        print("Content encrypted as {0}.  Is ECB?: {1}".format(is_ecb, detect_ecb_use(testing, len(test[0]))))
+        assert (is_ecb == 'ECB') == detect_ecb_use(testing, len(test[0]))
+        # print("Content encrypted as {0}.  Is ECB?: {1}".format(is_ecb, detect_ecb_use(testing, len(test[0]))))
 
         # print(test)
 
@@ -609,7 +637,7 @@ def decrypt_ecb_message_without_key(encrypted_blocks, base64_decoded: bytes, ran
     text_large = b'A' * 512
     encr_large = encrypt_ecb_oracle(text_large, base64_decoded, random_aes_key, prepend=prepend)
     key_length, is_ecb = discover_block_size_and_if_ecb(encr_large)
-    print("Key Length: {0}\nIs ECB: {1}\n".format(key_length, is_ecb))
+    # print("Key Length: {0}\nIs ECB: {1}\n".format(key_length, is_ecb))
 
     prepend_padding_count = obtain_ecb_prepend_padding_count(base64_decoded, random_aes_key, prepend=prepend)
 
@@ -653,6 +681,7 @@ def decrypt_ecb_message_without_key(encrypted_blocks, base64_decoded: bytes, ran
     print("Decrypted: {}".format(b''.join(collector)))
 
 
+@time_it
 def challenge_12() -> None:
     """
     Byte - at - a - time
@@ -692,7 +721,6 @@ def challenge_12() -> None:
        the first byte of unknown-string.
     6. Repeat for the next byte.
     """
-    print("\nChallenge_12() ------------------------------------------- ")
     base64_encoded = 'Um9sbGluJyBpbiBteSA1LjAKV2l0aCBteSByYWctdG9wIGRvd24gc28gbXkgaGFpciBjYW4gYmxvdwpUaGUgZ2lybGll' \
                      'cyBvbiBzdGFuZGJ5IHdhdmluZyBqdXN0IHRvIHNheSBoaQpEaWQgeW91IHN0b3A/IE5vLCBJIGp1c3QgZHJvdmUgYnkK'
     base64_decoded = base64.b64decode(base64_encoded)
@@ -728,6 +756,7 @@ def create_structured_cookie(from_email: str) -> collections.OrderedDict:
     return kv
 
 
+@time_it
 def challenge_13() -> None:
     """
     ECB cut-and-paste
@@ -867,6 +896,7 @@ def obtain_ecb_prepend_padding_count(message, key, prepend=None) -> int:
     return abs(counter)
 
 
+@time_it
 def challenge_14() -> object:
     """
     Take your oracle function from #12. Now generate a random count of random bytes and prepend this string to every
@@ -892,19 +922,30 @@ def challenge_14() -> object:
     decrypt_ecb_message_without_key(encrypted_blocks, base64_decoded, random_aes_key, prepend=random_prepend)
 
 
+@time_it
 def challenge_15() -> None:
     tests = [b"ICE ICE BABY\x04\x04\x04\x04",
              b"ICE ICE BABY\x05\x05\x05\x05",
              b"ICE ICE BABY\x01\x02\x03\x04",
              b"I\x0f\x0f\x0f\x0f\x0f\x0f\x0f\x0f\x0f\x0f\x0f\x0f\x0f\x0f\x0f",
              b"YELLOW SUBMARINE"]
+
+    expected_results = [b'ICE ICE BABY',
+                        b'I',
+                        b'YELLOW SUBMARINE']
+
+    received_results = list()
     for test in tests:
         try:
-            print(pkcs_7_padding_verification(test))
-        except ValueError as e:
-            print(e)
+            received_results.append(pkcs_7_padding_verification(test))
+        except ValueError:
+            pass
+
+    for item in received_results:
+        assert item in expected_results, 'PKCS7 Padding Verification Failed.'
 
 
+@time_it
 def challenge_16() -> None:
     """
     CBC bitflipping attacks
@@ -957,30 +998,39 @@ def challenge_16() -> None:
     def is_admin(encrypted, random_aes_key):
 
         decrypted = decrypt_aes_with_custom_cbc(b''.join(encrypted), random_aes_key, b'YELLOW SUBMARINE')
-        print('FUN: {}'.format(decrypted))
-        return b''.join(decrypted).find(b";admin=true;")
+        #print('FUN: {}'.format(decrypted[2]))
+        return False if b''.join(decrypted).find(b";admin=true;") == -1 else True
 
     random_aes_key = generate_random_bytes(16)
     encrypted = encrypt_using_CBC("?admin?true", random_aes_key)
-    decrypted = decrypt_aes_with_custom_cbc(b''.join(encrypted), random_aes_key, b'123')
-    #print("OLD: {}".format(encrypted))
 
-    #print("DEC: {}".format(decrypted))
+    # for debugging info
+    # decrypted = decrypt_aes_with_custom_cbc(b''.join(encrypted), random_aes_key, b'YELLOW SUBMARINE')
 
     # do something here to make ;admin=true exist in encrypted.
+    success = False
     for index in range(0, 255):
         first_array = bytearray(encrypted[1])
         first_array[0] = index
-        first_array[6] = index
-        encrypted[1] = bytes(first_array)
+        for index2 in range(0, 255):
+            first_array[6] = index2
+            encrypted[1] = bytes(first_array)
+            result = is_admin(encrypted, random_aes_key)
+            if result:
+                # print("Hacked Using the following byte Manipulations: {}, {}".format(index, index2))
+                success = True
+                break
+        if success:
+            break
 
-        #print("NEW: {}".format(encrypted))
-        result = is_admin(encrypted, random_aes_key)
-        if result is True:
-            print("Yes: {}".format(index))
+    assert success is True, "Unable to hack admin gate!"
+@time_it
+def challenge_17():
+    pass
 
 if __name__ == "__main__":
-    """
+
+
     # Set #1
     challenge_01()
     challenge_02()
@@ -999,10 +1049,7 @@ if __name__ == "__main__":
     challenge_13()
     challenge_14()
     challenge_15()
-    """
     challenge_16()
 
-    #test CBC
-    #encrypt = encrypt_aes_with_custom_cbc(b'X' * 64, b"yellow submarine", b"def")
-    #print(encrypt)
-    #print(decrypt_aes_with_custom_cbc(b''.join(encrypt), b"yellow submarine", b'jasonisgreat'))
+    # set #3
+    challenge_17()

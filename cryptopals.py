@@ -19,7 +19,7 @@ def time_it(method):
         result = method(*args, **kw)
         endTime = int(round(time.time() * 1000))
         print('Function Name: {0} - {1}ms'.format(method.__name__, endTime - startTime))
-        
+
         return result
 
     return wrapper
@@ -668,17 +668,14 @@ def decrypt_ecb_message_without_key(encrypted_blocks, base64_decoded: bytes, ran
                         if prepend_padding_count > 0:
                             result2 = result2[2:]
 
-                        try:
-                            if block_idx < len(encrypted_blocks) and result[block_idx] == result2[block_idx]:
+                        if block_idx < len(result) and block_idx < len(result2):
+                            if result[block_idx] == result2[block_idx]:
                                 current_block.append(chr(index).encode())
                                 # print(block_idx, len(text2), chr(index), result2[block_idx])
                                 _decrypted = True
-                        except IndexError as e:
-                            print(e)
-                            _decrypted = True
 
         collector.append(b"".join(current_block))
-    print("Decrypted: {}".format(b''.join(collector)))
+    return b''.join(collector)
 
 
 @time_it
@@ -728,7 +725,10 @@ def challenge_12() -> None:
 
     encrypted_blocks = encrypt_ecb_oracle(b'', base64_decoded, random_aes_key)
 
-    decrypt_ecb_message_without_key(encrypted_blocks, base64_decoded, random_aes_key)
+    result = decrypt_ecb_message_without_key(encrypted_blocks, base64_decoded, random_aes_key)
+
+    assert result == b"Rollin' in my 5.0\nWith my rag-top down so my hair can blow\nThe girlies on standby" \
+                     b" waving just to say hi\nDid you stop? No, I just drove by\n\x01", 'Decryption Failed!'
 
 
 def create_structured_cookie(from_email: str) -> collections.OrderedDict:
@@ -764,7 +764,7 @@ def challenge_13() -> None:
     :return:
     """
 
-    def profile_for(email: str):
+    def profile_for(user_input: str):
         """
         Now write a function that encodes a user profile in that format, given an email address.
 
@@ -791,10 +791,10 @@ def challenge_13() -> None:
         # Eat illegals
         illegals = '&='
         for illegal in illegals:
-            email.replace(illegal, '')
+            user_input.replace(illegal, '')
 
         user_profile = collections.OrderedDict()
-        user_profile['email'] = email
+        user_profile['email'] = user_input
         user_profile['uid'] = 10
         user_profile['role'] = 'user'
 
@@ -825,7 +825,7 @@ def challenge_13() -> None:
     blocks_as_string = b''.join(blocks)
     for_attacker = encrypt_aes(blocks_as_string, random_aes_key)
 
-    print("For Attacker: {}".format(for_attacker))
+    # print("For Attacker: {}".format(for_attacker))
 
     to_be_swizzled = pkcs_7_padding(for_attacker, len(random_aes_key))
 
@@ -837,7 +837,9 @@ def challenge_13() -> None:
     final.append(to_be_swizzled[2])
 
     for_me = decrypt_aes(b''.join(final), random_aes_key)
-    print("{}".format(for_me))
+
+    assert for_me == b'email=theadminisfake.test@gmail.com&uid=10&' \
+                     b'role=admin\x11\x11\x11\x11\x11\x11\x11\x11\x11\x11\x11', 'Admin account could not be hacked!'
 
 
 def obtain_ecb_pkcs7_count(message, key, prepend=None) -> int:
@@ -914,12 +916,13 @@ def challenge_14() -> object:
     random_prepend = generate_random_bytes(random.randint(1, 15))
     encrypted_blocks = encrypt_ecb_oracle(b'', base64_decoded, random_aes_key, prepend=random_prepend)
 
-    print("Padding: {}".format(obtain_ecb_pkcs7_count(base64_decoded, random_aes_key, prepend=random_prepend)))
+    # print("Padding: {}".format(obtain_ecb_pkcs7_count(base64_decoded, random_aes_key, prepend=random_prepend)))
     obtain_ecb_prepend_padding_count(base64_decoded, random_aes_key, prepend=random_prepend)
-    print(decrypt_aes(b''.join(encrypted_blocks), random_aes_key))
+    # print(decrypt_aes(b''.join(encrypted_blocks), random_aes_key))
     # print("Original Encrypted Blocks: {}".format(len(encrypted_blocks)))
 
-    decrypt_ecb_message_without_key(encrypted_blocks, base64_decoded, random_aes_key, prepend=random_prepend)
+    result = decrypt_ecb_message_without_key(encrypted_blocks, base64_decoded, random_aes_key, prepend=random_prepend)
+    assert base64_decoded == result.strip(b'\x01'), 'Decryption failed! {} != {}'.format(base64_decoded, result)
 
 
 @time_it
@@ -982,14 +985,12 @@ def challenge_16() -> None:
     :return:
     """
 
-    def encrypt_using_CBC(message, key):
+    def encrypt_using_cbc(message, key):
         prepend = r"comment1=cooking%20MCs;userdata="
         cleaned = message.replace(';', '').replace("=", "")
         append = r";comment2=%20like%20a%20pound%20of%20bacon"
 
         full_message = '{}{}{}'.format(prepend, cleaned, append).encode()
-
-        # blocks = pkcs_7_padding(full_message, len(key))
 
         encrypted = encrypt_aes_with_custom_cbc(full_message, key, b'YELLOW SUBMARINE')
 
@@ -1002,7 +1003,7 @@ def challenge_16() -> None:
         return False if b''.join(decrypted).find(b";admin=true;") == -1 else True
 
     random_aes_key = generate_random_bytes(16)
-    encrypted = encrypt_using_CBC("?admin?true", random_aes_key)
+    encrypted = encrypt_using_cbc("?admin?true", random_aes_key)
 
     # for debugging info
     # decrypted = decrypt_aes_with_custom_cbc(b''.join(encrypted), random_aes_key, b'YELLOW SUBMARINE')
@@ -1029,8 +1030,6 @@ def challenge_17():
     pass
 
 if __name__ == "__main__":
-
-
     # Set #1
     challenge_01()
     challenge_02()

@@ -294,43 +294,48 @@ def challenge_05() -> None:
     assert encrypt == test
 
 
+def break_repeating_key_xor(message):
+    if type(message) == str:
+        message = bytes(message)
+
+    key_length = get_secret_key_length_from_encrypted_data(message)
+
+    blocks = [message[index:index + key_length] for index in range(0, len(message), key_length)]
+
+    transposed = dict()
+    for block in blocks:
+        for index in range(0, key_length):
+            if index not in transposed.keys():
+                transposed[index] = list()
+            if index < len(block):
+                transposed[index].append(block[index])
+
+    values = list()
+    for index, block in transposed.items():
+        values.append(find_key_and_decrypt_fixed_xor_message(block)[0])
+
+    result = [chr(itm) for itm in values]
+
+    return "".join(result)
+
+
 @time_it
 def challenge_06() -> None:
+    """
+    Break repeating-key XOR
+    :return:
+    """
     with open("6.txt", 'r') as handle:
-        text = binascii.a2b_base64(handle.read())
+        message = handle.read()
 
-        key_length = get_secret_key_length_from_encrypted_data(text)
+        # convert from base64 to bytes
+        message = binascii.a2b_base64(message)
 
-        blocks = [text[index:index + key_length] for index in range(0, len(text), key_length)]
+    result = break_repeating_key_xor(message)
 
-        transposed = dict()
-        for block in blocks:
-            for index in range(0, key_length):
-                if index not in transposed.keys():
-                    transposed[index] = list()
-                if index < len(block):
-                    transposed[index].append(block[index])
+    assert result == 'Terminator X: Bring the noise'
 
-        values = list()
-        for index, block in transposed.items():
-            values.append(find_key_and_decrypt_fixed_xor_message(block)[0])
-
-        result = [chr(itm) for itm in values]
-        result = "".join(result)
-        assert result == 'Terminator X: Bring the noise'
-        """
-        print("KEY: {}".format(result))
-
-        # result = "Terminator X: Bring the noise"
-        _key = str.encode(result)
-
-        lines = []
-        for block in blocks:
-            stuff = encrypt_xor(block, key=_key)
-            lines.append(binascii.unhexlify(stuff).decode('utf-8'))
-
-        print("".join(lines))
-        """
+    # print(decrypt_xor(message, str.encode(result)))
 
 
 def decrypt_aes(text: bytes, key: bytes) -> bytes:
@@ -400,12 +405,14 @@ def challenge_08() -> None:
 
     with open("8.txt", 'r') as handle:
         lines = handle.readlines()
-        for ln, line in enumerate(lines):
-            text = binascii.unhexlify(line.strip('\n'))
-            if detect_ecb_use(text, 16):
-                break
 
-        assert ecb_encrypted_line == ln
+    for ln, line in enumerate(lines):
+        text = binascii.unhexlify(line.strip('\n'))
+
+        if detect_ecb_use(text, 16):
+            break
+
+    assert ecb_encrypted_line == ln
 
 
 def pkcs_7_padding(text: bytes, pad: int) -> list:
@@ -614,8 +621,14 @@ def encrypt_ecb_oracle(prefix: bytes, text: bytes, random_aes_key: bytes, prepen
     return encrypted
 
 
-def discover_block_size_and_if_ecb(encrypted_blocks):
-    encrypted_string = b''.join(encrypted_blocks)
+def discover_block_size_and_if_ecb(encrypted_message):
+    if type(encrypted_message) == list:
+        encrypted_string = b''.join(encrypted_message)
+    elif type(encrypted_message) == bytes:
+        encrypted_string = encrypted_message
+    elif type(encrypted_message) == str:
+        encrypted_string = bytes(encrypted_message)
+
     key_length = get_secret_key_length_from_encrypted_data(encrypted_string)
     # print("Number of blocks: {}".format(len(encrypted_blocks)))
     is_ecb = detect_ecb_use(encrypted_string, key_length)
@@ -1025,11 +1038,106 @@ def challenge_16() -> None:
             break
 
     assert success is True, "Unable to hack admin gate!"
+
+
 @time_it
 def challenge_17():
-    pass
+
+    def get_encrypted_blocks_and_iv(key):
+        # The first function should
+        # - select at random one of ten strings
+        # - generate a random AES key (which it should save for all future encryptions),
+        # - pad the string out to the 16-byte AES block size and
+        # - CBC-encrypt it under that key,
+        # - providing the caller the ciphertext and IV.
+
+        iv = b'YELLOW SUBMARINE'
+        test_data = [b'MDAwMDAwTm93IHRoYXQgdGhlIHBhcnR5IGlzIGp1bXBpbmc =',
+                     b'MDAwMDAxV2l0aCB0aGUgYmFzcyBraWNrZWQgaW4gYW5kIHRoZSBWZWdhJ3MgYXJlIHB1bXBpbic =',
+                     b'MDAwMDAyUXVpY2sgdG8gdGhlIHBvaW50LCB0byB0aGUgcG9pbnQsIG5vIGZha2luZw ==',
+                     b'MDAwMDAzQ29va2luZyBNQydzIGxpa2UgYSBwb3VuZCBvZiBiYWNvbg ==',
+                     b'MDAwMDA0QnVybmluZyAnZW0sIGlmIHlvdSBhaW4ndCBxdWljayBhbmQgbmltYmxl',
+                     b'MDAwMDA1SSBnbyBjcmF6eSB3aGVuIEkgaGVhciBhIGN5bWJhbA ==',
+                     b'MDAwMDA2QW5kIGEgaGlnaCBoYXQgd2l0aCBhIHNvdXBlZCB1cCB0ZW1wbw ==',
+                     b'MDAwMDA3SSdtIG9uIGEgcm9sbCwgaXQncyB0aW1lIHRvIGdvIHNvbG8 =',
+                     b'MDAwMDA4b2xsaW4nIGluIG15IGZpdmUgcG9pbnQgb2g =',
+                     b'MDAwMDA5aXRoIG15IHJhZy10b3AgZG93biBzbyBteSBoYWlyIGNhbiBibG93']
+
+        # grab a random string
+        random_string = test_data[0] # random.randrange(0, len(test_data))]
+        random_string = binascii.a2b_base64(random_string)
+
+        # pad the blocks to 16byte chunks
+        blocks = pkcs_7_padding(random_string, len(key))
+        print(b''.join(blocks), '(original)')
+
+        # encrypt using CBC with provided KEY / IV
+        encrypted_blocks = encrypt_aes_with_custom_cbc(b''.join(blocks), key, iv)
+
+        return encrypted_blocks, iv
+
+    def decrypt_cookie(ciphertext, key, iv):
+        # Consume the ciphertext
+        # decrypt it,
+        # check its padding, and
+        # return true or false depending on whether the padding is valid.
+        blocks = decrypt_aes_with_custom_cbc(ciphertext, key, iv)
+        # print(b''.join(blocks), '(decrypted)')
+        for block in blocks:
+            try:
+                pkcs_7_padding_verification(block)
+            except ValueError:
+                # print(block)
+                return False
+
+        return True
+
+    # prep the content to be encrypted
+    random_aes_key = generate_random_bytes(16)
+    encrypted_blocks, iv = get_encrypted_blocks_and_iv(random_aes_key)
+    cyphertext = b''.join(encrypted_blocks)
+
+    # put the cyphertext into a bytearray for manipulation
+    temp = bytearray(cyphertext)
+
+    # start to manipulate things and see if it results in any useful info.
+    possibles = []
+    for index in range(0, 255):
+        temp[-1] = index
+        did_pass = decrypt_cookie(bytes(temp), random_aes_key, iv)
+        if did_pass is False:
+            # Not sure yet what to do with this...
+            possibles.append(index)
+            # print("Possible Padding: {}".format(index))
+    print(cyphertext)
+    print(possibles)
+
+
+def test():
+    # clicking on my Grouse Grind image produced this
+    other = b'W1siZiIsIjIwMTUvMDUvMDkvMTMvNDYvNDgvNTIyLzc4ZjRmNTNjZWZlM2YzNjZiMzBhNjJkZTJhODc2NWQ2Il0sWyJwIiwidGh1bWIiLCI4OXgxMjIjIl1d'
+
+    # converting base64 to binary produces the following (which looks like a structure):
+    # b'[["f","2015/05/09/13/46/48/522/78f4f53cefe3f366b30a62de2a8765d6"],["p","thumb","89x122#"]]'
+    print(binascii.a2b_base64(other))
+
+    # The long hash looks like it might be something interesting?
+    message = b"78f4f53cefe3f366b30a62de2a8765d6"
+
+    # tests say its not AES
+    print("ECB?: {}".format(detect_ecb_use(message, 16)))
+
+    # is this XOR'd?
+    key = break_repeating_key_xor(message)
+
+    # seems like it may just be nonsense.
+    print("Key: {}".format(key))
+    print(decrypt_xor(message, str.encode(key)))
+
+
 
 if __name__ == "__main__":
+    """
     # Set #1
     challenge_01()
     challenge_02()
@@ -1049,6 +1157,9 @@ if __name__ == "__main__":
     challenge_14()
     challenge_15()
     challenge_16()
+    """
 
     # set #3
     challenge_17()
+
+    #stest()

@@ -415,7 +415,7 @@ def challenge_08() -> None:
     assert ecb_encrypted_line == ln
 
 
-def pkcs_7_padding(text: bytes, pad: int) -> list:
+def pkcs_7_padding(text: bytes, pad: int) -> bytes:
     """
     A block cipher transforms a fixed - sized block(usually 8 or 16 bytes) of plaintext into
     ciphertext. But we almost never want to transform a single block; we encrypt irregularly - sized messages.
@@ -433,32 +433,40 @@ def pkcs_7_padding(text: bytes, pad: int) -> list:
 
     "YELLOW SUBMARINE\x04\x04\x04\x04"
     """
-    results = []
-    blocks = [text[n:n + pad] for n in range(0, len(text), pad)]
-    for block in blocks:
-        padding = pad - len(block)
-        if padding != 0:
-            hexed = binascii.a2b_hex('{:02}'.format(padding))
-            block += hexed * padding
-        results.append(block)
 
-    return results
+    padding = pad - len(text) % pad
+    hexed = binascii.a2b_hex('{:02}'.format(padding))
+    text += (hexed * padding)
+
+    return text
+
+    # results = []
+    # blocks = [text[n:n + pad] for n in range(0, len(text), pad)]
+    #
+    #
+    # for block in blocks:
+    #     padding = pad - len(block)
+    #     if padding == 0:
+    #         padding = 16
+    #
+    #     hexed = binascii.a2b_hex('{:02}'.format(padding))
+    #     block += hexed * padding
+    #     results.append(block)
+    #
+    # return results
 
 
-def pkcs_7_padding_verification(block: bytes) -> str:
+def pkcs_7_padding_verification(message: bytes) -> bytes:
     """
     Takes a plaintext, determines if it has valid PKCS#7 padding, and strips the padding off.
-    :param block:
+    :param message:
     :return:
     """
-    maximum_pad_length = len(block)
-    last_byte = block[-1]
-    if last_byte < maximum_pad_length and block[-last_byte:] != bytes([last_byte] * last_byte):
-        raise ValueError('Bad Padding')
-    elif last_byte >= maximum_pad_length:
-        result = block
+    last_byte = message[-1]
+    if message[-last_byte:] != bytes([last_byte] * last_byte):
+        raise ValueError('Bad Padding for message: {}'.format(message))
     else:
-        result = block[0:-last_byte]
+        result = message[0:-last_byte]
 
     return result
 
@@ -466,17 +474,18 @@ def pkcs_7_padding_verification(block: bytes) -> str:
 @time_it
 def challenge_09() -> None:
     text = b'YELLOW SUBMARINE'
-    assert [b'YELLOW SUBMARINE\x04\x04\x04\x04'] == pkcs_7_padding(text, 20)
+    assert b'YELLOW SUBMARINE\x04\x04\x04\x04' == pkcs_7_padding(text, 20)
 
 
 def encrypt_aes_with_custom_cbc(text: bytes, key: bytes, iv: bytes) -> list:
     results = []
     keysize = len(key)
+    text = pkcs_7_padding(text, keysize)
     blocks = [text[n:n + keysize] for n in range(0, len(text), keysize)]
 
     for block in blocks:
-        pad_block = pkcs_7_padding(block, keysize)[0]
-        xor_block = encrypt_xor(pad_block, iv, hexlify=False)
+        # pad_block = pkcs_7_padding(block, keysize)[0]
+        xor_block = encrypt_xor(block, iv, hexlify=False)
         aes_block = encrypt_aes(xor_block, key)
         iv = aes_block
         results.append(aes_block)
@@ -527,9 +536,13 @@ def challenge_10() -> None:
     text = binascii.a2b_base64(open('10.txt', 'r').read())
 
     results = decrypt_aes_with_custom_cbc(text, key, iv)
-    encrypt = encrypt_aes_with_custom_cbc(b"".join(results), key, iv)
+    results = pkcs_7_padding_verification(b''.join(results))
+    # print(b''.join(results))
+    # print(results_stripped)
 
-    assert text == b"".join(encrypt)
+    blocks = encrypt_aes_with_custom_cbc(results, key, iv)
+
+    assert text == b"".join(blocks), '{}'.format(blocks)
 
 
 def generate_random_bytes(length: int) -> bytes:
@@ -575,11 +588,11 @@ def challenge_11() -> object:
             encoding_type = 'ECB'
             # encrypt ECB
             keysize = len(random_aes_key)
+            text = pkcs_7_padding(text, keysize)
             blocks = [text[n:n + keysize] for n in range(0, len(text), keysize)]
             encrypted = []
             for block in blocks:
-                padded_block = pkcs_7_padding(block, keysize)[0]
-                text = encrypt_aes(padded_block, random_aes_key)
+                text = encrypt_aes(block, random_aes_key)
                 # print(binascii.hexlify(text))
                 encrypted.append(text)
         else:
@@ -610,28 +623,27 @@ def encrypt_ecb_oracle(prefix: bytes, text: bytes, random_aes_key: bytes, prepen
 
     # encrypt ECB
     keysize = len(random_aes_key)
+    message = pkcs_7_padding(message, keysize)
     blocks = [message[n:n + keysize] for n in range(0, len(message), keysize)]
     encrypted = []
     for block in blocks:
-        padded_blocks = pkcs_7_padding(block, keysize)
-        for padded_block in padded_blocks:
-            text = encrypt_aes(padded_block, random_aes_key)
-            encrypted.append(text)
+        text = encrypt_aes(block, random_aes_key)
+        encrypted.append(text)
 
     return encrypted
 
 
 def discover_block_size_and_if_ecb(encrypted_message):
     if type(encrypted_message) == list:
-        encrypted_string = b''.join(encrypted_message)
+        encrypted_message = b''.join(encrypted_message)
     elif type(encrypted_message) == bytes:
-        encrypted_string = encrypted_message
+        encrypted_message = encrypted_message
     elif type(encrypted_message) == str:
-        encrypted_string = bytes(encrypted_message)
+        encrypted_message = bytes(encrypted_message)
 
-    key_length = get_secret_key_length_from_encrypted_data(encrypted_string)
+    key_length = get_secret_key_length_from_encrypted_data(encrypted_message)
     # print("Number of blocks: {}".format(len(encrypted_blocks)))
-    is_ecb = detect_ecb_use(encrypted_string, key_length)
+    is_ecb = detect_ecb_use(encrypted_message, key_length)
 
     return key_length, is_ecb
 
@@ -833,15 +845,14 @@ def challenge_13() -> None:
     and the ciphertexts themselves, make a role=admin profile.
     '''
     random_aes_key = generate_random_bytes(16)
-
-    blocks = pkcs_7_padding(profile.encode(), len(random_aes_key))
-    blocks_as_string = b''.join(blocks)
-    for_attacker = encrypt_aes(blocks_as_string, random_aes_key)
+    keysize = len(random_aes_key)
+    message = pkcs_7_padding(profile.encode(), keysize)
+    for_attacker = encrypt_aes(message, random_aes_key)
 
     # print("For Attacker: {}".format(for_attacker))
 
-    to_be_swizzled = pkcs_7_padding(for_attacker, len(random_aes_key))
-
+    # to_be_swizzled = pkcs_7_padding(for_attacker, len(random_aes_key))
+    to_be_swizzled = [for_attacker[n:n + keysize] for n in range(0, len(for_attacker), keysize)]
     # Reorder the ECB Blocks and throw away the regular user account :)
     final = list()
     final.append(to_be_swizzled[0])
@@ -1042,7 +1053,11 @@ def challenge_16() -> None:
 
 @time_it
 def challenge_17():
+    """
+    https://en.wikipedia.org/wiki/Padding_oracle_attack
 
+    :return:
+    """
     def get_encrypted_blocks_and_iv(key):
         # The first function should
         # - select at random one of ten strings
@@ -1066,13 +1081,10 @@ def challenge_17():
         # grab a random string
         random_string = test_data[0] # random.randrange(0, len(test_data))]
         random_string = binascii.a2b_base64(random_string)
-
-        # pad the blocks to 16byte chunks
-        blocks = pkcs_7_padding(random_string, len(key))
-        print(b''.join(blocks), '(original)')
+        print(random_string)
 
         # encrypt using CBC with provided KEY / IV
-        encrypted_blocks = encrypt_aes_with_custom_cbc(b''.join(blocks), key, iv)
+        encrypted_blocks = encrypt_aes_with_custom_cbc(random_string, key, iv)
 
         return encrypted_blocks, iv
 
@@ -1082,13 +1094,14 @@ def challenge_17():
         # check its padding, and
         # return true or false depending on whether the padding is valid.
         blocks = decrypt_aes_with_custom_cbc(ciphertext, key, iv)
-        # print(b''.join(blocks), '(decrypted)')
-        for block in blocks:
-            try:
-                pkcs_7_padding_verification(block)
-            except ValueError:
-                # print(block)
-                return False
+        message = b''.join(blocks)
+        print("{} (Decrypted)".format(message))
+
+        try:
+            pkcs_7_padding_verification(message)
+        except ValueError:
+            # print(block)
+            return False
 
         return True
 
@@ -1103,9 +1116,10 @@ def challenge_17():
     # start to manipulate things and see if it results in any useful info.
     possibles = []
     for index in range(0, 255):
-        temp[-1] = index
+        # Encrypted XOR Index XOR 01h
+        temp[16] = temp[16] ^ index ^ 1
         did_pass = decrypt_cookie(bytes(temp), random_aes_key, iv)
-        if did_pass is False:
+        if did_pass:
             # Not sure yet what to do with this...
             possibles.append(index)
             # print("Possible Padding: {}".format(index))
@@ -1123,7 +1137,7 @@ def test():
 
     # The long hash looks like it might be something interesting?
     message = b"78f4f53cefe3f366b30a62de2a8765d6"
-
+    print(binascii.unhexlify(message))
     # tests say its not AES
     print("ECB?: {}".format(detect_ecb_use(message, 16)))
 
@@ -1135,9 +1149,8 @@ def test():
     print(decrypt_xor(message, str.encode(key)))
 
 
-
 if __name__ == "__main__":
-    """
+    '''
     # Set #1
     challenge_01()
     challenge_02()
@@ -1157,9 +1170,8 @@ if __name__ == "__main__":
     challenge_14()
     challenge_15()
     challenge_16()
-    """
-
+    '''
     # set #3
     challenge_17()
 
-    #stest()
+    # test()

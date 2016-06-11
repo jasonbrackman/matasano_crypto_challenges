@@ -1058,15 +1058,9 @@ def challenge_17():
 
     :return:
     """
-    def get_encrypted_blocks_and_iv(key):
-        # The first function should
-        # - select at random one of ten strings
-        # - generate a random AES key (which it should save for all future encryptions),
-        # - pad the string out to the 16-byte AES block size and
-        # - CBC-encrypt it under that key,
-        # - providing the caller the ciphertext and IV.
-
-        iv = b'YELLOW SUBMARINE'
+    class Server:
+        iv = b'YELLOW SUBMARINE'  # generate_random_bytes(16)
+        key = b'\x996\xee\xa0\xaf\x96\xab48\x14UZ\xa2\x85\xccu'  # generate_random_bytes(16)
         test_data = [b'MDAwMDAwTm93IHRoYXQgdGhlIHBhcnR5IGlzIGp1bXBpbmc =',
                      b'MDAwMDAxV2l0aCB0aGUgYmFzcyBraWNrZWQgaW4gYW5kIHRoZSBWZWdhJ3MgYXJlIHB1bXBpbic =',
                      b'MDAwMDAyUXVpY2sgdG8gdGhlIHBvaW50LCB0byB0aGUgcG9pbnQsIG5vIGZha2luZw ==',
@@ -1078,53 +1072,76 @@ def challenge_17():
                      b'MDAwMDA4b2xsaW4nIGluIG15IGZpdmUgcG9pbnQgb2g =',
                      b'MDAwMDA5aXRoIG15IHJhZy10b3AgZG93biBzbyBteSBoYWlyIGNhbiBibG93']
 
-        # grab a random string
-        random_string = test_data[0] # random.randrange(0, len(test_data))]
-        random_string = binascii.a2b_base64(random_string)
-        print(random_string)
+        def get_encrypted_blocks(self):
+            # The first function should
+            # - select at random one of ten strings
+            # - generate a random AES key (which it should save for all future encryptions),
+            # - pad the string out to the 16-byte AES block size and
+            # - CBC-encrypt it under that key,
+            # - providing the caller the ciphertext and IV.
 
-        # encrypt using CBC with provided KEY / IV
-        encrypted_blocks = encrypt_aes_with_custom_cbc(random_string, key, iv)
+            # grab a random string
+            random_string = self.test_data[3]  # [random.randrange(0, len(self.test_data))]
+            random_string = binascii.a2b_base64(random_string)
+            print("STRING TO DECODE: {}".format(random_string[15:32]))
+            # encrypt using CBC with provided KEY / IV
+            encrypted_blocks = encrypt_aes_with_custom_cbc(random_string, self.key, self.iv)
 
-        return encrypted_blocks, iv
+            return encrypted_blocks
 
-    def decrypt_cookie(ciphertext, key, iv):
-        # Consume the ciphertext
-        # decrypt it,
-        # check its padding, and
-        # return true or false depending on whether the padding is valid.
-        blocks = decrypt_aes_with_custom_cbc(ciphertext, key, iv)
-        message = b''.join(blocks)
-        print("{} (Decrypted)".format(message))
+        def decrypt_cookie(self, ciphertext):
+            # Consume the ciphertext
+            # decrypt it,
+            # check its padding, and
+            # return true or false depending on whether the padding is valid.
+            blocks = decrypt_aes_with_custom_cbc(ciphertext, self.key, self.iv)
+            message = b''.join(blocks)
+            # print("{} (Decrypted)".format(message))
 
-        try:
-            pkcs_7_padding_verification(message)
-        except ValueError:
-            # print(block)
-            return False
+            try:
+                pkcs_7_padding_verification(message)
 
-        return True
+            except ValueError:
+                return False
 
-    # prep the content to be encrypted
-    random_aes_key = generate_random_bytes(16)
-    encrypted_blocks, iv = get_encrypted_blocks_and_iv(random_aes_key)
-    cyphertext = b''.join(encrypted_blocks)
+            # print(message)
+            return True
 
-    # put the cyphertext into a bytearray for manipulation
-    temp = bytearray(cyphertext)
+    server = Server()
+    blocks = server.get_encrypted_blocks()
 
-    # start to manipulate things and see if it results in any useful info.
-    possibles = []
-    for index in range(0, 255):
-        # Encrypted XOR Index XOR 01h
-        temp[16] = temp[16] ^ index ^ 1
-        did_pass = decrypt_cookie(bytes(temp), random_aes_key, iv)
-        if did_pass:
-            # Not sure yet what to do with this...
-            possibles.append(index)
-            # print("Possible Padding: {}".format(index))
-    print(cyphertext)
-    print(possibles)
+    def side_channel_attack(c1, c2):
+        byte_items = bytearray()
+        results = []
+        for slot in range(1, 16):
+            # print("Working on byte {}".format(17-slot))
+            found = False
+
+            for index in range(0, 255):
+                if found is False:
+                    c1a = (b'-' * (16 - slot)) + bytes([index])
+
+                    for counter, result in enumerate(byte_items, 1):
+                        c1a += bytes([result + counter])
+                    assert len(c1a) == 16, "Expected 16 bytes -- got {}".format(len(c1a))
+
+                    ciphertext = b''.join((c1a, c2))
+                    # print(ciphertext)
+                    if server.decrypt_cookie(ciphertext):
+                        result = c1[-slot] ^ index ^ slot
+                        byte_items.insert(0, index)
+                        results.append(result)
+                        found = True
+                        print("{} - Found [{}]: '{}' - index {}".format(17 - slot, found, chr(result), index))
+                else:
+                    break
+
+            if len(byte_items) != slot:
+                print("[FAILED] Was unable to find byte {} ....".format(17-slot))
+                return
+        print('Results: {}'.format([chr(result) for result in results]))
+
+    side_channel_attack(blocks[0], blocks[1])
 
 
 def test():

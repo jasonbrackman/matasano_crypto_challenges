@@ -1055,12 +1055,13 @@ def challenge_16() -> None:
 def challenge_17():
     """
     https://en.wikipedia.org/wiki/Padding_oracle_attack
+    http://robertheaton.com/2013/07/29/padding-oracle-attack/
 
     :return:
     """
     class Server:
-        iv = b'YELLOW SUBMARINE'  # generate_random_bytes(16)
-        key = b'\x996\xee\xa0\xaf\x96\xab48\x14UZ\xa2\x85\xccu'  # generate_random_bytes(16)
+        iv = generate_random_bytes(16)
+        key = generate_random_bytes(16)
         test_data = [b'MDAwMDAwTm93IHRoYXQgdGhlIHBhcnR5IGlzIGp1bXBpbmc =',
                      b'MDAwMDAxV2l0aCB0aGUgYmFzcyBraWNrZWQgaW4gYW5kIHRoZSBWZWdhJ3MgYXJlIHB1bXBpbic =',
                      b'MDAwMDAyUXVpY2sgdG8gdGhlIHBvaW50LCB0byB0aGUgcG9pbnQsIG5vIGZha2luZw ==',
@@ -1081,9 +1082,11 @@ def challenge_17():
             # - providing the caller the ciphertext and IV.
 
             # grab a random string
-            random_string = self.test_data[3]  # [random.randrange(0, len(self.test_data))]
-            random_string = binascii.a2b_base64(random_string)
-            print("STRING TO DECODE: {}".format(random_string[15:32]))
+            random_string = self.test_data[random.randrange(0, len(self.test_data))]
+            # random_string = binascii.a2b_base64(random_string)
+            # print("-" * 64)
+            # print("PRIOR TO ENCRYPTION: {}".format(random_string))
+            # print("-" * 64)
             # encrypt using CBC with provided KEY / IV
             encrypted_blocks = encrypt_aes_with_custom_cbc(random_string, self.key, self.iv)
 
@@ -1104,44 +1107,76 @@ def challenge_17():
             except ValueError:
                 return False
 
-            # print(message)
             return True
 
     server = Server()
     blocks = server.get_encrypted_blocks()
 
     def side_channel_attack(c1, c2):
-        byte_items = bytearray()
+        byte_items = []
         results = []
-        for slot in range(1, 16):
+        for slot in range(1, 17):
             # print("Working on byte {}".format(17-slot))
             found = False
 
+            prefix = b'-' * (16-slot)
+            postfix = b''
+
+            for counter, b1 in enumerate(byte_items, 1):
+                postfix += bytes([b1 ^ slot])
+
             for index in range(0, 255):
                 if found is False:
-                    c1a = (b'-' * (16 - slot)) + bytes([index])
-
-                    for counter, result in enumerate(byte_items, 1):
-                        c1a += bytes([result + counter])
+                    c1a = prefix + bytes([index]) + postfix
+                    # print(c1a)
                     assert len(c1a) == 16, "Expected 16 bytes -- got {}".format(len(c1a))
 
                     ciphertext = b''.join((c1a, c2))
                     # print(ciphertext)
                     if server.decrypt_cookie(ciphertext):
-                        result = c1[-slot] ^ index ^ slot
-                        byte_items.insert(0, index)
-                        results.append(result)
+                        """
+                        Let b_{-1}  be the last byte of C_{1}.
+
+                        The attacker changes it as follows:
+                            b_-1 = b_-1 XOR z1 XOR 0x01, where
+                            z_{-1} is the guessed value of the last byte of P_{2}.
+                        """
+
+                        # intermediate state
+                        i2a = index ^ slot
+
+                        # plaintext reveal
+                        p2 = c1[-slot] ^ i2a
+
+                        # These are the bytes that make up the generated encryption block
+                        byte_items.insert(0, index ^ slot)
+
+                        # Decrypted Letters
+                        results.insert(0, p2)
                         found = True
-                        print("{} - Found [{}]: '{}' - index {}".format(17 - slot, found, chr(result), index))
+                        # print("{} - Found ['{}']: hex {}, int {}".format(17 - slot, chr(p2), c1a[-slot], c1a[-slot]))
                 else:
                     break
 
             if len(byte_items) != slot:
                 print("[FAILED] Was unable to find byte {} ....".format(17-slot))
-                return
-        print('Results: {}'.format([chr(result) for result in results]))
+                final_results = [chr(result).encode() for result in results]
+                print("STRING DECRYPTED: {}".format((b'0' * (17-slot)) + b''.join(final_results)))
 
-    side_channel_attack(blocks[0], blocks[1])
+                return
+
+        return results
+
+    results = []
+    for c1, c2 in zip(blocks, blocks[1:]):
+        result = side_channel_attack(c1, c2)
+        if result is not None:
+            results.append(''.join([chr(item) for item in result]))
+
+    print("-" * 64)
+    print("DECRYPTED: {}".format(results))
+    print("DECBASE64: {}".format(binascii.a2b_base64(''.join(results))))
+    print("-" * 64)
 
 
 def test():
@@ -1167,7 +1202,7 @@ def test():
 
 
 if __name__ == "__main__":
-    '''
+
     # Set #1
     challenge_01()
     challenge_02()
@@ -1187,7 +1222,7 @@ if __name__ == "__main__":
     challenge_14()
     challenge_15()
     challenge_16()
-    '''
+
     # set #3
     challenge_17()
 

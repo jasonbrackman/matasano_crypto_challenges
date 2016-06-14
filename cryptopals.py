@@ -8,8 +8,10 @@ import itertools
 import collections
 try:
     from Crypto.Cipher import AES
+    from Crypto.Util import Counter
 except ImportError:
     from Cryptodome.Cipher import AES
+    from Cryptodome.Util import Counter
 import os
 
 
@@ -1083,11 +1085,12 @@ def challenge_17():
 
             # grab a random string
             random_string = self.test_data[random.randrange(0, len(self.test_data))]
-            # random_string = binascii.a2b_base64(random_string)
-            # print("-" * 64)
-            # print("PRIOR TO ENCRYPTION: {}".format(random_string))
-            # print("-" * 64)
-            # encrypt using CBC with provided KEY / IV
+
+            print("-" * 128)
+            print("PRIOR TO ENCRYPTION: {}".format(random_string))
+            print("PRIOR TO ENCRBASE64: {}".format(binascii.a2b_base64(random_string)))
+
+            # encrypt using CBC
             encrypted_blocks = encrypt_aes_with_custom_cbc(random_string, self.key, self.iv)
 
             return encrypted_blocks
@@ -1103,7 +1106,6 @@ def challenge_17():
 
             try:
                 pkcs_7_padding_verification(message)
-
             except ValueError:
                 return False
 
@@ -1160,45 +1162,88 @@ def challenge_17():
 
             if len(byte_items) != slot:
                 print("[FAILED] Was unable to find byte {} ....".format(17-slot))
-                final_results = [chr(result).encode() for result in results]
-                print("STRING DECRYPTED: {}".format((b'0' * (17-slot)) + b''.join(final_results)))
-
-                return
+                final_results = [chr(result) for result in results]
+                # print("STRING DECRYPTED: {}".format((b'.' * (17-slot)) + ''.join(final_results).encode()))
+                print("server key: {}".format(server.key))
+                print("server iv: {}".format(server.iv))
+                return ([69] * (18-slot)) + results
 
         return results
 
     results = []
+    blocks.insert(0, server.iv)
     for c1, c2 in zip(blocks, blocks[1:]):
         result = side_channel_attack(c1, c2)
-        if result is not None:
+        if result:
             results.append(''.join([chr(item) for item in result]))
 
-    print("-" * 64)
+    print("-" * 128)
     print("DECRYPTED: {}".format(results))
     print("DECBASE64: {}".format(binascii.a2b_base64(''.join(results))))
-    print("-" * 64)
+    print("-" * 128)
 
+def encrypt_aes_with_custom_ctr(message, key, nbits):
+    ctr = Counter.new(nbits, little_endian=True)
+    cipher = AES.new(key, AES.MODE_CTR, counter=ctr)
+    result = cipher.encrypt(message)
+
+    return result
+
+def decrypt_aes_with_custom_ctr(message, key, nbits):
+    ctr = Counter.new(nbits, little_endian=True)
+    cipher = AES.new(key, AES.MODE_CTR, counter=ctr)
+    result = cipher.decrypt(message)
+
+    return result
+
+@time_it
+def challenge_18():
+    """
+    key = YELLOW SUBMARINE
+    nonce = 0
+    format = 64 bit unsigned little endian nonce, 64 bit little endian block count(byte count / 16)
+    """
+    try:
+        key = b'YELLOW SUBMARINE'
+        ctr_encrypted = b'L77na/nrFsKvynd6HzOoG7GHTLXsTVu9qvY/2syLXzhPweyyMTJULu/6/kXX0KSvoOLSFQ=='
+        ctr_encrypted = binascii.a2b_base64(ctr_encrypted)
+        print(ctr_encrypted)
+        print(decrypt_aes_with_custom_ctr(ctr_encrypted, key, nbits=64))
+    except:
+        print('still working on it....')
 
 def test():
     # clicking on my Grouse Grind image produced this
     other = b'W1siZiIsIjIwMTUvMDUvMDkvMTMvNDYvNDgvNTIyLzc4ZjRmNTNjZWZlM2YzNjZiMzBhNjJkZTJhODc2NWQ2Il0sWyJwIiwidGh1bWIiLCI4OXgxMjIjIl1d'
-
+    other = b'W1siZiIsIjIwMTYvMDUvMTgvMTMvMjYvNDMvOTQ0L2ZsaWdodDIwMTZfYmFja2dyb3VuZC5qcGciXSxbInAiLCJyZXNpemVfYW5kX2Nyb3AiLHsid2lkdGgiOjE0MDAsImhlaWdodCI6MTAwMCwiZ3Jhdml0eSI6Im5lIn1dLFsiZSIsImpwZyIsIi1xdWFsaXR5IDgwIl1d'
+    other = b'W1siZiIsIjIwMTYvMDQvMjkvMTUvNDcvNTgvMTM0L1NlZWtUaGVQZWFrX0JhY2tncm91bmQuanBnIl0sWyJwIiwicmVzaXplX2FuZF9jcm9wIix7IndpZHRoIjoxNDAwLCJoZWlnaHQiOjEwMDAsImdyYXZpdHkiOiJuZSJ9XSxbImUiLCJqcGciLCItcXVhbGl0eSA4MCJd'
     # converting base64 to binary produces the following (which looks like a structure):
     # b'[["f","2015/05/09/13/46/48/522/78f4f53cefe3f366b30a62de2a8765d6"],["p","thumb","89x122#"]]'
     print(binascii.a2b_base64(other))
 
     # The long hash looks like it might be something interesting?
     message = b"78f4f53cefe3f366b30a62de2a8765d6"
-    print(binascii.unhexlify(message))
+    unhexed = binascii.unhexlify(message)
+    print("Message Length: {}".format(len(unhexed)))
+    print("As Chars: {}".format(''.join([chr(itm) for itm in unhexed])))
     # tests say its not AES
     print("ECB?: {}".format(detect_ecb_use(message, 16)))
-
+    print("XOR DECRYPTION? {}".format(find_key_and_decrypt_fixed_xor_message(message)))
     # is this XOR'd?
     key = break_repeating_key_xor(message)
 
     # seems like it may just be nonsense.
-    print("Key: {}".format(key))
-    print(decrypt_xor(message, str.encode(key)))
+    print("Key?: {}".format(key))
+    print("XOR DECRYPTION2: {}".format(decrypt_xor(message, str.encode(key))))
+
+    # reeoncde to request a larger image
+    bigger = b'[["f","2015/05/09/13/46/48/522/78f4f53cefe3f366b30a62de2a8765d6"],["p","thumb","280x444#"]'
+    bigger = binascii.b2a_base64(bigger)
+    print("MODIFIED: {}".format(bigger))
+
+    # NOTE: Changing 'p' to 'q' -- produces an error message 'Not Found'
+    # NOTE: Changing the image size will change the size of the image -- but still loads the same image.
+    # NOTE: Changing the 'thumb' to 'thumb2' produces no error, just a blank page.
 
 
 if __name__ == "__main__":
@@ -1225,5 +1270,7 @@ if __name__ == "__main__":
 
     # set #3
     challenge_17()
+    challenge_18()
 
+    # Interesting Case
     # test()

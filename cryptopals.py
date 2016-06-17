@@ -1206,6 +1206,7 @@ def aes_with_custom_ctr(message, key, nonce):
     blocks = [message[n:n + keysize] for n in range(0, len(message), keysize)]
 
     for counter, block in enumerate(blocks):
+
         keystream = generate_keystream(nonce, counter)
         aes_block = encrypt_aes(keystream, key)
         xor_block = encrypt_xor(aes_block, block, hexlify=False)
@@ -1234,46 +1235,92 @@ def challenge_18():
 
 @time_it
 def challenge_19():
-    lines = ['SSBoYXZlIG1ldCB0aGVtIGF0IGNsb3NlIG9mIGRheQ==',
-             'Q29taW5nIHdpdGggdml2aWQgZmFjZXM=',
-             'RnJvbSBjb3VudGVyIG9yIGRlc2sgYW1vbmcgZ3JleQ==',
-             'RWlnaHRlZW50aC1jZW50dXJ5IGhvdXNlcy4=',
-             'SSBoYXZlIHBhc3NlZCB3aXRoIGEgbm9kIG9mIHRoZSBoZWFk',
-             'T3IgcG9saXRlIG1lYW5pbmdsZXNzIHdvcmRzLA==',
-             'T3IgaGF2ZSBsaW5nZXJlZCBhd2hpbGUgYW5kIHNhaWQ=',
-             'UG9saXRlIG1lYW5pbmdsZXNzIHdvcmRzLA==',
-             'QW5kIHRob3VnaHQgYmVmb3JlIEkgaGFkIGRvbmU=',
-             'T2YgYSBtb2NraW5nIHRhbGUgb3IgYSBnaWJl',
-             'VG8gcGxlYXNlIGEgY29tcGFuaW9u',
-             'QXJvdW5kIHRoZSBmaXJlIGF0IHRoZSBjbHViLA==',
-             'QmVpbmcgY2VydGFpbiB0aGF0IHRoZXkgYW5kIEk=',
-             'QnV0IGxpdmVkIHdoZXJlIG1vdGxleSBpcyB3b3JuOg==',
-             'QWxsIGNoYW5nZWQsIGNoYW5nZWQgdXR0ZXJseTo=',
-'QSB0ZXJyaWJsZSBiZWF1dHkgaXMgYm9ybi4=',
-'VGhhdCB3b21hbidzIGRheXMgd2VyZSBzcGVudA==',
-'SW4gaWdub3JhbnQgZ29vZCB3aWxsLA==',
-'SGVyIG5pZ2h0cyBpbiBhcmd1bWVudA==
-'VW50aWwgaGVyIHZvaWNlIGdyZXcgc2hyaWxsLg==
-'V2hhdCB2b2ljZSBtb3JlIHN3ZWV0IHRoYW4gaGVycw==
-'V2hlbiB5b3VuZyBhbmQgYmVhdXRpZnVsLA==
-'U2hlIHJvZGUgdG8gaGFycmllcnM/
-'VGhpcyBtYW4gaGFkIGtlcHQgYSBzY2hvb2w=
-'QW5kIHJvZGUgb3VyIHdpbmdlZCBob3JzZS4=
-'VGhpcyBvdGhlciBoaXMgaGVscGVyIGFuZCBmcmllbmQ=
-'V2FzIGNvbWluZyBpbnRvIGhpcyBmb3JjZTs=
-'SGUgbWlnaHQgaGF2ZSB3b24gZmFtZSBpbiB0aGUgZW5kLA==
-'U28gc2Vuc2l0aXZlIGhpcyBuYXR1cmUgc2VlbWVkLA==
-'U28gZGFyaW5nIGFuZCBzd2VldCBoaXMgdGhvdWdodC4=
-'VGhpcyBvdGhlciBtYW4gSSBoYWQgZHJlYW1lZA==
-'QSBkcnVua2VuLCB2YWluLWdsb3Jpb3VzIGxvdXQu
-'SGUgaGFkIGRvbmUgbW9zdCBiaXR0ZXIgd3Jvbmc=
-'VG8gc29tZSB3aG8gYXJlIG5lYXIgbXkgaGVhcnQs
-'WWV0IEkgbnVtYmVyIGhpbSBpbiB0aGUgc29uZzs=
-'SGUsIHRvbywgaGFzIHJlc2lnbmVkIGhpcyBwYXJ0'
-'SW4gdGhlIGNhc3VhbCBjb21lZHk7
-'SGUsIHRvbywgaGFzIGJlZW4gY2hhbmdlZCBpbiBoaXMgdHVybiw=
-'VHJhbnNmb3JtZWQgdXR0ZXJseTo=
-'QSB0ZXJyaWJsZSBiZWF1dHkgaXMgYm9ybi4=']
+    """
+    Attack this cryptosystem piecemeal: guess letters, use expected English language frequence to validate guesses,
+    catch common English trigrams, and so on.
+    :return:
+    """
+    lines = [b'SSBoYXZlIG1ldCB0aGVtIGF0IGNsb3NlIG9mIGRheQ==',
+             b'Q29taW5nIHdpdGggdml2aWQgZmFjZXM=',
+             b'RnJvbSBjb3VudGVyIG9yIGRlc2sgYW1vbmcgZ3JleQ==',
+             b'RWlnaHRlZW50aC1jZW50dXJ5IGhvdXNlcy4=',
+             b'SSBoYXZlIHBhc3NlZCB3aXRoIGEgbm9kIG9mIHRoZSBoZWFk',
+             b'T3IgcG9saXRlIG1lYW5pbmdsZXNzIHdvcmRzLA==',
+             b'T3IgaGF2ZSBsaW5nZXJlZCBhd2hpbGUgYW5kIHNhaWQ=',
+             b'UG9saXRlIG1lYW5pbmdsZXNzIHdvcmRzLA==',
+             b'QW5kIHRob3VnaHQgYmVmb3JlIEkgaGFkIGRvbmU=',
+             b'T2YgYSBtb2NraW5nIHRhbGUgb3IgYSBnaWJl',
+             b'VG8gcGxlYXNlIGEgY29tcGFuaW9u',
+             b'QXJvdW5kIHRoZSBmaXJlIGF0IHRoZSBjbHViLA==',
+             b'QmVpbmcgY2VydGFpbiB0aGF0IHRoZXkgYW5kIEk=',
+             b'QnV0IGxpdmVkIHdoZXJlIG1vdGxleSBpcyB3b3JuOg==',
+             b'QWxsIGNoYW5nZWQsIGNoYW5nZWQgdXR0ZXJseTo=',
+             b'QSB0ZXJyaWJsZSBiZWF1dHkgaXMgYm9ybi4=',
+             b'VGhhdCB3b21hbidzIGRheXMgd2VyZSBzcGVudA==',
+             b'SW4gaWdub3JhbnQgZ29vZCB3aWxsLA==',
+             b'SGVyIG5pZ2h0cyBpbiBhcmd1bWVudA==',
+             b'VW50aWwgaGVyIHZvaWNlIGdyZXcgc2hyaWxsLg==',
+             b'V2hhdCB2b2ljZSBtb3JlIHN3ZWV0IHRoYW4gaGVycw==',
+             b'V2hlbiB5b3VuZyBhbmQgYmVhdXRpZnVsLA==',
+             b'U2hlIHJvZGUgdG8gaGFycmllcnM/',
+             b'VGhpcyBtYW4gaGFkIGtlcHQgYSBzY2hvb2w=',
+             b'QW5kIHJvZGUgb3VyIHdpbmdlZCBob3JzZS4=',
+             b'VGhpcyBvdGhlciBoaXMgaGVscGVyIGFuZCBmcmllbmQ=',
+             b'V2FzIGNvbWluZyBpbnRvIGhpcyBmb3JjZTs=',
+             b'SGUgbWlnaHQgaGF2ZSB3b24gZmFtZSBpbiB0aGUgZW5kLA==',
+             b'U28gc2Vuc2l0aXZlIGhpcyBuYXR1cmUgc2VlbWVkLA==',
+             b'U28gZGFyaW5nIGFuZCBzd2VldCBoaXMgdGhvdWdodC4=',
+             b'VGhpcyBvdGhlciBtYW4gSSBoYWQgZHJlYW1lZA==',
+             b'QSBkcnVua2VuLCB2YWluLWdsb3Jpb3VzIGxvdXQu',
+             b'SGUgaGFkIGRvbmUgbW9zdCBiaXR0ZXIgd3Jvbmc=',
+             b'VG8gc29tZSB3aG8gYXJlIG5lYXIgbXkgaGVhcnQs',
+             b'WWV0IEkgbnVtYmVyIGhpbSBpbiB0aGUgc29uZzs=',
+             b'SGUsIHRvbywgaGFzIHJlc2lnbmVkIGhpcyBwYXJ0',
+             b'SW4gdGhlIGNhc3VhbCBjb21lZHk7',
+             b'SGUsIHRvbywgaGFzIGJlZW4gY2hhbmdlZCBpbiBoaXMgdHVybiw=',
+             b'VHJhbnNmb3JtZWQgdXR0ZXJseTo=',
+             b'QSB0ZXJyaWJsZSBiZWF1dHkgaXMgYm9ybi4=']
+
+    random_key = generate_random_bytes(16)
+    encrypted_messages = []
+    for item in lines:
+        message = base64.standard_b64decode(item)
+        print(message)
+        encrypted = aes_with_custom_ctr(message, random_key, nonce=0)
+        encrypted_messages.append(encrypted)
+
+    """
+    CIPHERTEXT-BYTE XOR PLAINTEXT-BYTE = KEYSTREAM-BYTE
+    And since the keystream is the same for every ciphertext:
+    CIPHERTEXT-BYTE XOR KEYSTREAM-BYTE = PLAINTEXT-BYTE
+    """
+    keys = {}
+    key = []
+    for index in range(200):
+        keys[index] = []
+        for guess in range(255):
+
+            items = [chr(item[index] ^ guess) for item in encrypted_messages if len(item) > index]
+            count = [item for item in items if item in (string.ascii_letters + " ,':-;")]
+
+            if len(items) == 0 == len(count):
+                break
+
+            if len(items) == len(count):
+                # all items are valid -- so likely a good hit
+                key.append(bytes([guess]))
+                keys[index].append(bytes([guess]))
+                print("Working on byte: {} -> {}".format(index, bytes([guess])))
+                break
+
+    print("KEY XOR GUESS: ", b''.join(key))
+    for message in encrypted_messages:
+        print(decrypt_xor(message, bytes(b''.join(key))))
+
+
+@time_it
+def challenge_20():
+
 
 
 def test():
@@ -1311,7 +1358,7 @@ def test():
 
 
 if __name__ == "__main__":
-
+    """
     # Set #1
     challenge_01()
     challenge_02()
@@ -1335,6 +1382,7 @@ if __name__ == "__main__":
     # set #3
     challenge_17()
     challenge_18()
+    """
     challenge_19()
 
     # Interesting Case

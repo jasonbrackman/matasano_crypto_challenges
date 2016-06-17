@@ -1,8 +1,9 @@
 import time
 import string
 import random
-import binascii
 import base64
+import struct
+import binascii
 from operator import itemgetter
 import itertools
 import collections
@@ -347,10 +348,10 @@ def decrypt_aes(text: bytes, key: bytes) -> bytes:
     return result
 
 
-def encrypt_aes(encrypted: bytes, key: bytes) -> bytes:
+def encrypt_aes(text: bytes, key: bytes) -> bytes:
     # print(len(key), key, encrypted)
     cipher = AES.new(key, AES.MODE_ECB)
-    result = cipher.encrypt(encrypted)
+    result = cipher.encrypt(text)
     # print("Decrypted here: {}".format(decrypt_xor(cipher.decrypt(result), b'1')))
 
     return result
@@ -1127,7 +1128,7 @@ def challenge_17():
             for counter, b1 in enumerate(byte_items, 1):
                 postfix += bytes([b1 ^ slot])
 
-            for index in range(0, 255):
+            for index in range(0, 256):
                 if found is False:
                     c1a = prefix + bytes([index]) + postfix
                     # print(c1a)
@@ -1182,19 +1183,37 @@ def challenge_17():
     print("DECBASE64: {}".format(binascii.a2b_base64(''.join(results))))
     print("-" * 128)
 
-def encrypt_aes_with_custom_ctr(message, key, nbits):
-    ctr = Counter.new(nbits, little_endian=True)
-    cipher = AES.new(key, AES.MODE_CTR, counter=ctr)
-    result = cipher.encrypt(message)
 
-    return result
 
-def decrypt_aes_with_custom_ctr(message, key, nbits):
-    ctr = Counter.new(nbits, little_endian=True)
-    cipher = AES.new(key, AES.MODE_CTR, counter=ctr)
-    result = cipher.decrypt(message)
+def generate_keystream(nonce, counter):
+    """
 
-    return result
+    :param nonce: 64 bit unsigned little endian
+    :param counter: 64 bit little endian block count (byte count / keylength)
+    :return: 128bit / 16byte string
+    """
+    format = '<q'  # < = little endian
+                   # q = convert hex
+    c_nonce = struct.pack(format, nonce)
+    c_counter = struct.pack(format, counter)
+
+    return b''.join((c_nonce, c_counter))
+
+
+def aes_with_custom_ctr(message, key, nonce):
+    results = []
+    keysize = len(key)
+    blocks = [message[n:n + keysize] for n in range(0, len(message), keysize)]
+
+    for counter, block in enumerate(blocks):
+        keystream = generate_keystream(nonce, counter)
+        aes_block = encrypt_aes(keystream, key)
+        xor_block = encrypt_xor(aes_block, block, hexlify=False)
+
+        results.append(xor_block[0:len(block)])
+
+    return b''.join(results)
+
 
 @time_it
 def challenge_18():
@@ -1203,14 +1222,59 @@ def challenge_18():
     nonce = 0
     format = 64 bit unsigned little endian nonce, 64 bit little endian block count(byte count / 16)
     """
-    try:
-        key = b'YELLOW SUBMARINE'
-        ctr_encrypted = b'L77na/nrFsKvynd6HzOoG7GHTLXsTVu9qvY/2syLXzhPweyyMTJULu/6/kXX0KSvoOLSFQ=='
-        ctr_encrypted = binascii.a2b_base64(ctr_encrypted)
-        print(ctr_encrypted)
-        print(decrypt_aes_with_custom_ctr(ctr_encrypted, key, nbits=64))
-    except:
-        print('still working on it....')
+
+    key = b'YELLOW SUBMARINE'
+    ctr_encrypted = b'L77na/nrFsKvynd6HzOoG7GHTLXsTVu9qvY/2syLXzhPweyyMTJULu/6/kXX0KSvoOLSFQ=='
+    ctr_encrypted = base64.standard_b64decode(ctr_encrypted)
+
+    decrypted = aes_with_custom_ctr(ctr_encrypted, key, nonce=0)
+
+    assert decrypted == b"Yo, VIP Let's kick it Ice, Ice, baby Ice, Ice, baby ", "CTR Decryption failed!"
+
+
+@time_it
+def challenge_19():
+    lines = ['SSBoYXZlIG1ldCB0aGVtIGF0IGNsb3NlIG9mIGRheQ==',
+             'Q29taW5nIHdpdGggdml2aWQgZmFjZXM=',
+             'RnJvbSBjb3VudGVyIG9yIGRlc2sgYW1vbmcgZ3JleQ==',
+             'RWlnaHRlZW50aC1jZW50dXJ5IGhvdXNlcy4=',
+             'SSBoYXZlIHBhc3NlZCB3aXRoIGEgbm9kIG9mIHRoZSBoZWFk',
+             'T3IgcG9saXRlIG1lYW5pbmdsZXNzIHdvcmRzLA==',
+             'T3IgaGF2ZSBsaW5nZXJlZCBhd2hpbGUgYW5kIHNhaWQ=',
+             'UG9saXRlIG1lYW5pbmdsZXNzIHdvcmRzLA==',
+             'QW5kIHRob3VnaHQgYmVmb3JlIEkgaGFkIGRvbmU=',
+             'T2YgYSBtb2NraW5nIHRhbGUgb3IgYSBnaWJl',
+             'VG8gcGxlYXNlIGEgY29tcGFuaW9u',
+             'QXJvdW5kIHRoZSBmaXJlIGF0IHRoZSBjbHViLA==',
+             'QmVpbmcgY2VydGFpbiB0aGF0IHRoZXkgYW5kIEk=',
+             'QnV0IGxpdmVkIHdoZXJlIG1vdGxleSBpcyB3b3JuOg==',
+             'QWxsIGNoYW5nZWQsIGNoYW5nZWQgdXR0ZXJseTo=',
+'QSB0ZXJyaWJsZSBiZWF1dHkgaXMgYm9ybi4=',
+'VGhhdCB3b21hbidzIGRheXMgd2VyZSBzcGVudA==',
+'SW4gaWdub3JhbnQgZ29vZCB3aWxsLA==',
+'SGVyIG5pZ2h0cyBpbiBhcmd1bWVudA==
+'VW50aWwgaGVyIHZvaWNlIGdyZXcgc2hyaWxsLg==
+'V2hhdCB2b2ljZSBtb3JlIHN3ZWV0IHRoYW4gaGVycw==
+'V2hlbiB5b3VuZyBhbmQgYmVhdXRpZnVsLA==
+'U2hlIHJvZGUgdG8gaGFycmllcnM/
+'VGhpcyBtYW4gaGFkIGtlcHQgYSBzY2hvb2w=
+'QW5kIHJvZGUgb3VyIHdpbmdlZCBob3JzZS4=
+'VGhpcyBvdGhlciBoaXMgaGVscGVyIGFuZCBmcmllbmQ=
+'V2FzIGNvbWluZyBpbnRvIGhpcyBmb3JjZTs=
+'SGUgbWlnaHQgaGF2ZSB3b24gZmFtZSBpbiB0aGUgZW5kLA==
+'U28gc2Vuc2l0aXZlIGhpcyBuYXR1cmUgc2VlbWVkLA==
+'U28gZGFyaW5nIGFuZCBzd2VldCBoaXMgdGhvdWdodC4=
+'VGhpcyBvdGhlciBtYW4gSSBoYWQgZHJlYW1lZA==
+'QSBkcnVua2VuLCB2YWluLWdsb3Jpb3VzIGxvdXQu
+'SGUgaGFkIGRvbmUgbW9zdCBiaXR0ZXIgd3Jvbmc=
+'VG8gc29tZSB3aG8gYXJlIG5lYXIgbXkgaGVhcnQs
+'WWV0IEkgbnVtYmVyIGhpbSBpbiB0aGUgc29uZzs=
+'SGUsIHRvbywgaGFzIHJlc2lnbmVkIGhpcyBwYXJ0'
+'SW4gdGhlIGNhc3VhbCBjb21lZHk7
+'SGUsIHRvbywgaGFzIGJlZW4gY2hhbmdlZCBpbiBoaXMgdHVybiw=
+'VHJhbnNmb3JtZWQgdXR0ZXJseTo=
+'QSB0ZXJyaWJsZSBiZWF1dHkgaXMgYm9ybi4=']
+
 
 def test():
     # clicking on my Grouse Grind image produced this
@@ -1271,6 +1335,7 @@ if __name__ == "__main__":
     # set #3
     challenge_17()
     challenge_18()
+    challenge_19()
 
     # Interesting Case
     # test()

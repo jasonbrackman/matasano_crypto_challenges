@@ -1285,7 +1285,6 @@ def challenge_19():
     encrypted_messages = []
     for item in lines:
         message = base64.standard_b64decode(item)
-        print(message)
         encrypted = aes_with_custom_ctr(message, random_key, nonce=0)
         encrypted_messages.append(encrypted)
 
@@ -1301,26 +1300,47 @@ def challenge_19():
         for guess in range(255):
 
             items = [chr(item[index] ^ guess) for item in encrypted_messages if len(item) > index]
-            count = [item for item in items if item in (string.ascii_letters + " ,':-;")]
+            count = [item for item in items if item in (string.ascii_letters + " ,.'?:-;")]
 
             if len(items) == 0 == len(count):
+                keys[index].append(bytes([0]))
                 break
 
             if len(items) == len(count):
                 # all items are valid -- so likely a good hit
                 key.append(bytes([guess]))
                 keys[index].append(bytes([guess]))
-                print("Working on byte: {} -> {}".format(index, bytes([guess])))
+                # print("Working on byte: {} -> {}".format(index, bytes([guess])))
                 break
 
-    print("KEY XOR GUESS: ", b''.join(key))
-    for message in encrypted_messages:
-        print(decrypt_xor(message, bytes(b''.join(key))))
+    final_key = b''.join(key)
 
+    # print("KEY XOR GUESS: {} - {}".format(len(final_key), final_key))
+    keysize = len(final_key)
+    for line, message in zip(lines, encrypted_messages):
+        blocks = [message[n:n + keysize] for n in range(0, len(message), keysize)]
+
+        decrypt = [decrypt_xor(block, final_key) for block in blocks]
+        print(b''.join(decrypt))
 
 @time_it
 def challenge_20():
+    """
+    Using 20.txt, find a similar set of Base64'd plaintext. Do with them exactly what you did with the first, but
+    solve the problem differently.  Instead of making spot guesses at to known plaintext, treat the collection of
+    ciphertexts the same way you would repeating-key XOR.  Obviously, CTR encryption appears different from repeated-key
+    XOR, but with a fixed nonce they are effectively the same thing.
 
+    To exploit this:
+    1. take your collection of ciphertexts and
+    2. truncate them to a common length (the length of the smallest ciphertext will work).
+
+    Solve the resulting concatenation of ciphertexts as if for repeating- key XOR, with a key size of the length of
+    the ciphertext you XOR'd.
+    """
+
+
+    pass
 
 
 def test():

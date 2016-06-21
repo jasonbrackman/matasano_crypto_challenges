@@ -62,7 +62,7 @@ def convert_bytes_to_base64(input_string: bytes) -> bytes:
     return _b64
 
 
-def decrypt_fixed_xor(message, key):
+def decrypt_fixed_xor(message: bytes, key: bytes) -> bytes:
     """
     Decode hex value and xor'd against the key.
     - running a binascii.unhexlify(hex) on the result will reveal the ascii readable content.
@@ -72,17 +72,7 @@ def decrypt_fixed_xor(message, key):
     :return: a hex value in bytes
     """
 
-    if type(message) == str:
-        message = bytes.fromhex(message)
-    elif type(message) == int:
-        message = message.to_bytes(2, 'big')
-
-    if type(key) == str:
-        key = binascii.a2b_hex(key)
-    elif type(key) == int:
-        key = key.to_bytes(2, 'big')
-
-    output = ""
+    output = b''
     if len(message) == len(key):
         output = bytes([x ^ y for (x, y) in zip(message, key)])
     elif len(key) == 1:
@@ -107,7 +97,7 @@ def score_text(decrypted: bytes) -> float:
     return sum(scores)
 
 
-def find_key_and_decrypt_fixed_xor_message(data):
+def find_key_and_decrypt_fixed_xor(message: bytes):
     """
     Devise some method for "scoring" a piece of English plaintext. Character frequency is a good metric.
     Evaluate each output and choose the one with the best score.
@@ -115,18 +105,12 @@ def find_key_and_decrypt_fixed_xor_message(data):
 
     scores = list()
     for key in range(0, 255):
-        hexed = str(hex(key))[2:]
-
         try:
-            decrypted_xor = decrypt_fixed_xor(data, hexed)
+            decrypted_xor = decrypt_fixed_xor(message, bytes([key]))
             decrypted = binascii.unhexlify(decrypted_xor)
             scores.append((key, score_text(decrypted), decrypted))
 
-        except binascii.Error:
-            pass
         except UnicodeDecodeError:
-            pass
-        except AttributeError:
             pass
 
     if len(scores) == 0:
@@ -210,10 +194,11 @@ def challenge_01() -> None:
 
 @time_it
 def challenge_02() -> None:
-    data = "1c0111001f010100061a024b53535009181c"
-    key = "686974207468652062756c6c277320657965"
 
-    decrypted = decrypt_fixed_xor(data, key)
+    key = binascii.unhexlify(b"686974207468652062756c6c277320657965")
+    message = binascii.unhexlify(b"1c0111001f010100061a024b53535009181c")
+
+    decrypted = decrypt_fixed_xor(message, key)
     # print(binascii.unhexlify(decrypted))
     assert decrypted == b'746865206b696420646f6e277420706c6179'
 
@@ -231,8 +216,8 @@ def challenge_03() -> None:
 
     How?
     """
-    data = "1b37373331363f78151b7f2b783431333d78397828372d363c78373e783a393b3736"
-    key, decrypted_message = find_key_and_decrypt_fixed_xor_message(data)
+    data = binascii.unhexlify(b"1b37373331363f78151b7f2b783431333d78397828372d363c78373e783a393b3736")
+    key, decrypted_message = find_key_and_decrypt_fixed_xor(data)
     assert decrypted_message == b"Cooking MC's like a pound of bacon"
 
 
@@ -262,7 +247,7 @@ def challenge_04() -> None:
         for line in handle.readlines():
             line = binascii.a2b_hex(line.strip())
 
-            attempt = find_key_and_decrypt_fixed_xor_message(line)
+            attempt = find_key_and_decrypt_fixed_xor(line)
             key, decrypted = attempt
             words = decrypted.decode('utf-8').split()
             english = [word for word in words if word in keywords]
@@ -297,25 +282,17 @@ def challenge_05() -> None:
     assert encrypt == test
 
 
-def break_repeating_key_xor(message):
-    if type(message) == str:
-        message = bytes(message)
+def break_repeating_key_xor(message: bytes):
 
     key_length = get_secret_key_length_from_encrypted_data(message)
 
     blocks = [message[index:index + key_length] for index in range(0, len(message), key_length)]
 
-    transposed = dict()
-    for block in blocks:
-        for index in range(0, key_length):
-            if index not in transposed.keys():
-                transposed[index] = list()
-            if index < len(block):
-                transposed[index].append(block[index])
+    transposed = transpose(blocks)
 
     values = list()
     for index, block in transposed.items():
-        values.append(find_key_and_decrypt_fixed_xor_message(block)[0])
+        values.append(find_key_and_decrypt_fixed_xor(block)[0])
 
     result = [chr(itm) for itm in values]
 
@@ -1234,7 +1211,7 @@ def challenge_18():
 
 
 @time_it
-def challenge_19():
+def challenge_19() -> None:
     """
     Attack this cryptosystem piecemeal: guess letters, use expected English language frequence to validate guesses,
     catch common English trigrams, and so on.
@@ -1323,13 +1300,27 @@ def challenge_19():
         decrypt = [decrypt_xor(block, final_key) for block in blocks]
         print(b''.join(decrypt))
 
+
+def transpose(blocks: list) -> dict:
+    transposed = dict()
+    for block in blocks:
+        for index in range(0, len(blocks[0])):
+            if index not in transposed.keys():
+                transposed[index] = list()
+            if index < len(block):
+                transposed[index].append(block[index])
+
+    return transposed
+
 @time_it
-def challenge_20():
+def challenge_20() -> None:
     """
     Using 20.txt, find a similar set of Base64'd plaintext. Do with them exactly what you did with the first, but
     solve the problem differently.  Instead of making spot guesses at to known plaintext, treat the collection of
-    ciphertexts the same way you would repeating-key XOR.  Obviously, CTR encryption appears different from repeated-key
-    XOR, but with a fixed nonce they are effectively the same thing.
+    ciphertexts the same way you would repeating-key XOR.
+
+    Obviously, CTR encryption appears different from repeated-ke XOR, but with a fixed nonce they are effectively
+    the same thing.
 
     To exploit this:
     1. take your collection of ciphertexts and
@@ -1338,9 +1329,51 @@ def challenge_20():
     Solve the resulting concatenation of ciphertexts as if for repeating- key XOR, with a key size of the length of
     the ciphertext you XOR'd.
     """
+    key = generate_random_bytes(16)
+    nonce = 0
+
+    with open('20.txt', 'r') as handle:
+        lines = [base64.b64decode(line.strip()) for line in handle.readlines()]
+        crypts = [aes_with_custom_ctr(line, key, nonce) for line in lines]
+
+    # min_length = len(max(crypts, key=len))
+    blocks = [crypt for crypt in crypts]
+
+    transposed = transpose(blocks)
+
+    # check each index for possible hits
+    # if more than one hit -- check for score.
+
+    keys = {}
+    for index, block in transposed.items():
+        keys[index] = []
+        for guess in range(255):
+            items = [(item ^ guess) for item in block]
+            count = [item for item in items if chr(item) in (string.ascii_letters + " ,.'?:-;")]
+            # if index == 10:
+            #    print(len(items), len(count), [chr(item) for item in items])
+
+            keys[index].append([len(count), bytes([guess])])
+
+    key = []
+    for index in keys:
+        key.append(max(keys[index], key=lambda x: x[0])[1])
+
+    result = b''.join(key)
+
+    for block in blocks:
+        print(decrypt_xor(block, result))
 
 
-    pass
+@time_it
+def challenge_21():
+    '''
+    Implement the MT19937 Mersenne Twister RNG
+    - https://en.wikipedia.org/wiki/Mersenne_Twister
+    :return:
+    '''
+
+
 
 
 def test():
@@ -1359,7 +1392,7 @@ def test():
     print("As Chars: {}".format(''.join([chr(itm) for itm in unhexed])))
     # tests say its not AES
     print("ECB?: {}".format(detect_ecb_use(message, 16)))
-    print("XOR DECRYPTION? {}".format(find_key_and_decrypt_fixed_xor_message(message)))
+    print("XOR DECRYPTION? {}".format(find_key_and_decrypt_fixed_xor(message)))
     # is this XOR'd?
     key = break_repeating_key_xor(message)
 
@@ -1378,7 +1411,7 @@ def test():
 
 
 if __name__ == "__main__":
-    """
+
     # Set #1
     challenge_01()
     challenge_02()
@@ -1402,8 +1435,9 @@ if __name__ == "__main__":
     # set #3
     challenge_17()
     challenge_18()
-    """
     challenge_19()
+    challenge_20()
+    challenge_21()
 
     # Interesting Case
     # test()

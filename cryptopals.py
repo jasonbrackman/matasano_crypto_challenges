@@ -1367,11 +1367,46 @@ def challenge_20() -> None:
 
 @time_it
 def challenge_21():
-    '''
+    """
     Implement the MT19937 Mersenne Twister RNG
     - https://en.wikipedia.org/wiki/Mersenne_Twister
     :return:
-    '''
+    """
+
+    # w: word size (in number of bits)
+    # n: degree of recurrence
+    # m: middle word, an offset used in the recurrence relation defining the series x, 1 ≤ m < n
+    # r: separation point of one word, or the number of bits of the lower bitmask, 0 ≤ r ≤ w - 1
+    w, n, m, r = 32, 624, 397, 31
+
+    # // Create a length n array to store the state of the generator
+    # int[0..n-1] MT
+    # int index := n+1
+    # const int lower_mask = (1 << r) - 1 // That is, the binary number of r 1's
+    # const int upper_mask = lowest w bits of (not lower_mask)
+
+    mt = [0] * (n-1)  # list of ints
+    index = n+1
+    lower_mask = (1 << r) - 1
+    print("lower_mask", lower_mask)
+    upper_mask = w & -lower_mask
+    print("upper_mask", upper_mask)
+
+    # // Initialize the generator from a seed
+    #  function seed_mt(int seed) {
+    #      index := n
+    #      MT[0] := seed
+    #      for i from 1 to (n - 1) { // loop over each element
+    #          MT[i] := lowest w bits of (f * (MT[i-1] xor (MT[i-1] >> (w-2))) + i)
+    #      }
+    #  }
+    def seed_mt(seed):
+        index = n
+        mt[0] = seed
+        for index in range(1, n):
+            mt[index] = (f * (mt[index-1] ^ (mt[index-1] >> (w-2))) + index)
+
+
 
 
 
@@ -1411,7 +1446,7 @@ def test():
 
 
 if __name__ == "__main__":
-
+    """
     # Set #1
     challenge_01()
     challenge_02()
@@ -1437,6 +1472,7 @@ if __name__ == "__main__":
     challenge_18()
     challenge_19()
     challenge_20()
+    """
     challenge_21()
 
     # Interesting Case

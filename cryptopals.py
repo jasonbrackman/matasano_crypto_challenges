@@ -1373,6 +1373,27 @@ def challenge_21():
     :return:
     """
     class MT19337:
+        # w: word size (in number of bits)
+        # n: degree of recurrence
+        # m: middle word, an offset used in the recurrence relation defining the series x, 1 ≤ m < n
+        # r: separation point of one word, or the number of bits of the lower bitmask, 0 ≤ r ≤ w - 1
+        w, n, m, r = 32, 624, 397, 31
+
+        # self.lower_mask = hex((1<<31)-1)
+        lower_mask = 0x7fffffff
+        upper_mask = 0xffffffff & -lower_mask
+        # print('LM: {}'.format(hex(lower_mask)))
+        # print('UM: {}'.format(hex(upper_mask)))
+
+        # The value for f for MT19937 is 1812433253
+        f = 0x6c078965
+
+        a = 0x9908B0DF
+        u, d = 11, 0xFFFFFFFF
+        s, b = 7, 0x9D2C5680
+        t, c = 15, 0xEFC60000
+        l = 18
+
         def __init__(self, seed):
 
             # w: word size (in number of bits)
@@ -1381,20 +1402,16 @@ def challenge_21():
             # r: separation point of one word, or the number of bits of the lower bitmask, 0 ≤ r ≤ w - 1
             # w, n, m, r = 32, 624, 397, 31
 
-            # f = 1812433253 # teh hex value of this is needed.
-
             # // Create a length n array to store the state of the generator
             # int[0..n-1] MT
             # int index := n+1
             # const int lower_mask = (1 << r) - 1 // That is, the binary number of r 1's
             # const int upper_mask = lowest w bits of (not lower_mask)
 
-            self.mt = [0] * 624  # list of ints
-            self.index = 624
-            lower_mask = (1 << 31*1) - 1
-            print("lower_mask", hex(lower_mask))
-            upper_mask = 0xffffffff-1 & -lower_mask
-            print("upper_mask", hex(upper_mask))
+            self.mt = [0] * self.n  # list of ints
+            self.index = self.n
+            self.seed = seed
+            self.seed_mt(self.seed)
 
         # // Initialize the generator from a seed
         #  function seed_mt(int seed) {
@@ -1407,7 +1424,7 @@ def challenge_21():
         def seed_mt(self, seed):
             self.mt[0] = seed
             for index in range(1, 624):
-                self.mt[index] = 0xffffffff & (0x6c078965 * (self.mt[index-1] ^ (self.mt[index-1] >> 30)) + index)
+                self.mt[index] = 0xffffffff & (self.f * (self.mt[index-1] ^ (self.mt[index-1] >> 30)) + index)
 
 
         # // Extract a tempered value based on MT[index]
@@ -1431,7 +1448,54 @@ def challenge_21():
         #   return lowest w bits of (y)
         # }
 
+        def extract_number(self):
+            if self.index >= self.n:
+                self.twist()
+
+            y = self.mt[self.index]
+            y ^= (y >> self.u) & self.d
+            y ^= (y << self.s) & self.b
+            y ^= (y << self.t) & self.c
+            y ^= y >> self.l
+
+            self.index += 1
+
+            return 0xffffffff & y
+
+        # // Generate the next n values from the series x_i
+        # function twist() {
+        #  for i from 0 to (n-1) {
+        #      int x := (MT[i] and upper_mask)
+        #                + (MT[(i+1) mod n] and lower_mask)
+        #      int xA := x >> 1
+        #      if (x mod 2) != 0 { // lowest bit of x is 1
+        #          xA := xA xor a
+        #      }
+        #      MT[i] := MT[(i + m) mod n] xor xA
+        #  }
+        #  index := 0
+        # }
+
+        def twist(self):
+            for index in range(0, 624):
+                x = (self.mt[index] & self.upper_mask) +\
+                    (self.mt[(index + 1) % self.n] & self.lower_mask)
+                xA = x >> 1
+                if (x % 2) != 0:
+                    xA ^= self.a
+
+                self.mt[index] = self.mt[(index + self.m) % self.n] ^ xA
+
+            self.index = 0
+
     x = MT19337(90210)
+
+    assert x.extract_number() == 826079627
+
+
+@time_it
+def challenge_22():
+    pass
 
 def test():
     # clicking on my Grouse Grind image produced this
@@ -1468,7 +1532,7 @@ def test():
 
 
 if __name__ == "__main__":
-    """
+
     # Set #1
     challenge_01()
     challenge_02()
@@ -1494,8 +1558,8 @@ if __name__ == "__main__":
     challenge_18()
     challenge_19()
     challenge_20()
-    """
     challenge_21()
+    challenge_22()
 
     # Interesting Case
     # test()

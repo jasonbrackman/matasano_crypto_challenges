@@ -64,11 +64,8 @@ def find_key_and_decrypt_fixed_xor(message: bytes):
             decrypted = decrypt_xor(message, bytes([key]))
             scores.append((key, score_text(decrypted), decrypted))
 
-        except UnicodeDecodeError:
-            pass
-
-    if len(scores) == 0:
-        scores.append((0, 0, b'<error>'))
+        except UnicodeDecodeError as e:
+            scores.append((0, 0, b'<error>'))
 
     _key, _, _decrypted = max(scores, key=itemgetter(1))
 
@@ -104,28 +101,19 @@ def compute_hamming_distance(s1: bytes, s2: bytes) -> int:
     """Return the Hamming distance between equal-length sequences"""
     if len(s1) != len(s2):
         raise ValueError("Undefined for sequences of unequal length")
-    if type(s1) != bytes:
-        s1 = bytes(s1, 'ascii')
-    if type(s2) != bytes:
-        s2 = bytes(s2, 'ascii')
 
     return sum(bin(x ^ y).count("1") for (x, y) in zip(s1, s2))
 
 
 def get_normalized_hamming_distance(data: bytes, keysize: int) -> float:
     """
-    Expects a base64 input
-
     take the first KEYSIZE worth of bytes,
     and the second KEYSIZE worth of bytes, and find the edit distance between them.
     Normalize this result by dividing by KEYSIZE.
     """
 
-    if type(data) != bytes:
-        data = bytes(data, 'ascii')
-
     # the greater the number of chunks the more likely a good result can be had
-    chunks = [data[keysize * n:keysize * (n + 1)] for n in range(0, 20)]
+    chunks = [data[keysize * n:keysize * (n + 1)] for n in range(1, 20)]
     chunks = [chunk for chunk in chunks if len(chunk) == keysize]
     distances = list(map(compute_hamming_distance, chunks, chunks[1:]))
 
@@ -1453,7 +1441,7 @@ def challenge_22():
 
     current_time = int(time.time())
 
-    time.sleep(random.randint(1, 3))
+    time.sleep(random.randint(40, 1000))
 
     random_number = MT19337(current_time).extract_number()
 
@@ -1463,48 +1451,45 @@ def challenge_22():
         temp_time = future_time - index
         test_number = MT19337(temp_time).extract_number()
         if test_number == random_number:
-            # print("Actual Seed: {}".format(current_time))
-            # print("Derived Seed: {} (Found in {} iterations)".format(temp_time, index+1))
+            print("Actual Seed: {}".format(current_time))
+            print("Derived Seed: {} (Found in {} iterations)".format(temp_time, index+1))
             result = temp_time
+            break
 
     assert result == current_time
 
-def test():
-    # clicking on my Grouse Grind image produced this
-    other = b'W1siZiIsIjIwMTUvMDUvMDkvMTMvNDYvNDgvNTIyLzc4ZjRmNTNjZWZlM2YzNjZiMzBhNjJkZTJhODc2NWQ2Il0sWyJwIiwidGh1bWIiLCI4OXgxMjIjIl1d'
-    other = b'W1siZiIsIjIwMTYvMDUvMTgvMTMvMjYvNDMvOTQ0L2ZsaWdodDIwMTZfYmFja2dyb3VuZC5qcGciXSxbInAiLCJyZXNpemVfYW5kX2Nyb3AiLHsid2lkdGgiOjE0MDAsImhlaWdodCI6MTAwMCwiZ3Jhdml0eSI6Im5lIn1dLFsiZSIsImpwZyIsIi1xdWFsaXR5IDgwIl1d'
-    other = b'W1siZiIsIjIwMTYvMDQvMjkvMTUvNDcvNTgvMTM0L1NlZWtUaGVQZWFrX0JhY2tncm91bmQuanBnIl0sWyJwIiwicmVzaXplX2FuZF9jcm9wIix7IndpZHRoIjoxNDAwLCJoZWlnaHQiOjEwMDAsImdyYXZpdHkiOiJuZSJ9XSxbImUiLCJqcGciLCItcXVhbGl0eSA4MCJd'
-    # converting base64 to binary produces the following (which looks like a structure):
-    # b'[["f","2015/05/09/13/46/48/522/78f4f53cefe3f366b30a62de2a8765d6"],["p","thumb","89x122#"]]'
-    print(binascii.a2b_base64(other))
 
-    # The long hash looks like it might be something interesting?
-    message = b"78f4f53cefe3f366b30a62de2a8765d6"
-    unhexed = binascii.unhexlify(message)
-    print("Message Length: {}".format(len(unhexed)))
-    print("As Chars: {}".format(''.join([chr(itm) for itm in unhexed])))
-    # tests say its not AES
-    print("ECB?: {}".format(detect_ecb_use(message, 16)))
-    print("XOR DECRYPTION? {}".format(find_key_and_decrypt_fixed_xor(message)))
-    # is this XOR'd?
-    key = break_repeating_key_xor(message)
+def challenge_23():
+    """
+    Task: Clone an MT19937 RNG from its output
 
-    # seems like it may just be nonsense.
-    print("Key?: {}".format(key))
-    print("XOR DECRYPTION2: {}".format(decrypt_xor(message, str.encode(key))))
+    The internal state of MT19937 consists of 624 32 bit integers.
 
-    # reeoncde to request a larger image
-    bigger = b'[["f","2015/05/09/13/46/48/522/78f4f53cefe3f366b30a62de2a8765d6"],["p","thumb","280x444#"]'
-    bigger = binascii.b2a_base64(bigger)
-    print("MODIFIED: {}".format(bigger))
+    For each batch of 624 outputs, MT permutes that internal state. By permuting state regularly, MT19937
+    achieves a period of 2**19937, which is Big.
 
-    # NOTE: Changing 'p' to 'q' -- produces an error message 'Not Found'
-    # NOTE: Changing the image size will change the size of the image -- but still loads the same image.
-    # NOTE: Changing the 'thumb' to 'thumb2' produces no error, just a blank page.
+    Each time MT19937 is tapped, an element of its internal state is subjected to a tempering function that
+    diffuses bits through the result.
 
+    The tempering function is invertible; you can write an "untemper" function that takes an MT19937 output and
+    transforms it back into the corresponding element of the MT19937 state array.
+
+    ****
+    To invert the temper transform, apply the inverse of each of the operations in the temper transform in reverse
+    order. There are two kinds of operations in the temper transform each applied twice; one is an XOR against a
+    right-shifted value, and the other is an XOR against a left-shifted value AND'd with a magic number. So you'll
+    need code to invert the "right" and the "left" operation.
+    ***
+
+    Once you have "untemper" working, create a new MT19937 generator, tap it for 624 outputs, untemper each of them
+    to recreate the state of the generator, and splice that state into a new instance of the MT19937 generator.
+
+    The new "spliced" generator should predict the values of the original.
+    """
+    pass
 
 if __name__ == "__main__":
-
+    """
     # Set #1
     challenge_01()
     challenge_02()
@@ -1532,8 +1517,8 @@ if __name__ == "__main__":
     challenge_20()
     challenge_21()
 
+    """
+    # challenge_22()
+    challenge_23()
 
-    challenge_22()
 
-    # Interesting Case
-    # test()

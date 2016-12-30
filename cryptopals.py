@@ -7,6 +7,7 @@ import binascii
 from operator import itemgetter
 import itertools
 import collections
+import language
 try:
     from Crypto.Cipher import AES
     from Crypto.Util import Counter
@@ -27,59 +28,13 @@ def time_it(method):
 
     return wrapper
 
-letters = {' ': 0.13000000,
-           'e': 0.12575645,
-           't': 0.09085226,
-           'a': 0.08000395,
-           'o': 0.07591270,
-           'i': 0.06920007,
-           'n': 0.06903785,
-           's': 0.06340880,
-           'r': 0.06236609,
-           'h': 0.05959034,
-           'd': 0.04317924,
-           'l': 0.04057231,
-           'u': 0.02841783,
-           'c': 0.02575785,
-           'm': 0.02560994,
-           'f': 0.02350463,
-           'w': 0.02224893,
-           'g': 0.01982677,
-           'y': 0.01900888,
-           'p': 0.01795742,
-           'b': 0.01535701,
-           'v': 0.00981717,
-           'k': 0.00739906,
-           'x': 0.00179556,
-           'j': 0.00145188,
-           'q': 0.00117571,
-           'z': 0.00079130}
+letters = language.letter_frequency()
 
 
 def convert_bytes_to_base64(input_string: bytes) -> bytes:
     _hex = binascii.unhexlify(input_string)
     _b64 = binascii.b2a_base64(_hex)
     return _b64
-
-
-def decrypt_fixed_xor(message: bytes, key: bytes) -> bytes:
-    """
-    Decode hex value and xor'd against the key.
-    - running a binascii.unhexlify(hex) on the result will reveal the ascii readable content.
-
-    :param message: Expecting a hex value as string or bytes
-    :param key: Expecting a hex value as string or bytes
-    :return: a hex value in bytes
-    """
-
-    output = b''
-    if len(message) == len(key):
-        output = bytes([x ^ y for (x, y) in zip(message, key)])
-    elif len(key) == 1:
-        padded_list = key * len(message)
-        output = bytes([x ^ y for (x, y) in zip(message, padded_list)])
-
-    return binascii.b2a_hex(output)
 
 
 def score_text(decrypted: bytes) -> float:
@@ -106,22 +61,28 @@ def find_key_and_decrypt_fixed_xor(message: bytes):
     scores = list()
     for key in range(0, 255):
         try:
-            decrypted_xor = decrypt_fixed_xor(message, bytes([key]))
-            decrypted = binascii.unhexlify(decrypted_xor)
+            decrypted = decrypt_xor(message, bytes([key]))
             scores.append((key, score_text(decrypted), decrypted))
 
         except UnicodeDecodeError:
             pass
 
     if len(scores) == 0:
-        scores.append(('<none>', 0, b'<error>'))
+        scores.append((0, 0, b'<error>'))
+
     _key, _, _decrypted = max(scores, key=itemgetter(1))
 
-    return _key, _decrypted
+    return bytes([_key]), _decrypted
 
 
 def decrypt_xor(message: bytes, key: bytes) -> bytes:
+    """
+    Decode hex value and xor'd against the key - if key is short -- it is cycled (repeating xor)
 
+    :param message: Expecting a hex value as bytes
+    :param key: Expecting a hex value as bytes
+    :return: decoded text in bytes
+    """
     keys = itertools.cycle(key)
     output = bytes(x ^ y for x, y in zip(message, keys))
 
@@ -173,7 +134,7 @@ def get_normalized_hamming_distance(data: bytes, keysize: int) -> float:
 
 def get_secret_key_length_from_encrypted_data(text: bytes) -> int:
     results = dict()
-    for keylength in range(2, 40):
+    for keylength in range(0, 40):
         try:
             results[keylength] = get_normalized_hamming_distance(text, keylength)
         except:
@@ -198,9 +159,9 @@ def challenge_02() -> None:
     key = binascii.unhexlify(b"686974207468652062756c6c277320657965")
     message = binascii.unhexlify(b"1c0111001f010100061a024b53535009181c")
 
-    decrypted = decrypt_fixed_xor(message, key)
-    # print(binascii.unhexlify(decrypted))
-    assert decrypted == b'746865206b696420646f6e277420706c6179'
+    decrypted = decrypt_xor(message, key)
+
+    assert decrypted == binascii.unhexlify(b'746865206b696420646f6e277420706c6179')
 
 
 @time_it
@@ -233,25 +194,16 @@ def challenge_04() -> None:
     """
 
     # obtained by http://www.dummies.com/how-to/content/top-50-most-commonly-used-words-in-english.html
-    keywords = ["the", "he", "at", "but", "there", "of",
-                "was", "be", "not", "use", "and", "for",
-                "this", "what", "an", "a", "on", "have",
-                "all", "each", "to", "are", "from",
-                "were", "which", "in", "as", "or", "we",
-                "she", "is", "with", "when", "do",
-                "you", "his", "had", "your", "how",
-                "that", "they", "by", "can", "their",
-                "it", "I", "word", "said", "if"]
+    english = language.common_words(number=50)
 
     with open("4.txt", 'r') as handle:
         for line in handle.readlines():
             line = binascii.a2b_hex(line.strip())
 
-            attempt = find_key_and_decrypt_fixed_xor(line)
-            key, decrypted = attempt
+            key, decrypted = find_key_and_decrypt_fixed_xor(line)
+
             words = decrypted.decode('utf-8').split()
-            english = [word for word in words if word in keywords]
-            if english:
+            if any(word in english for word in words):
                 assert decrypted == b'Now that the party is jumping\n'
 
 
@@ -287,16 +239,12 @@ def break_repeating_key_xor(message: bytes):
     key_length = get_secret_key_length_from_encrypted_data(message)
 
     blocks = [message[index:index + key_length] for index in range(0, len(message), key_length)]
-
     transposed = transpose(blocks)
 
-    values = list()
-    for index, block in transposed.items():
-        values.append(find_key_and_decrypt_fixed_xor(block)[0])
+    values = [find_key_and_decrypt_fixed_xor(block)[0] for index, block in transposed.items()]
+    result = [itm for itm in values]
 
-    result = [chr(itm) for itm in values]
-
-    return "".join(result)
+    return b"".join(result)
 
 
 @time_it
@@ -313,7 +261,7 @@ def challenge_06() -> None:
 
     result = break_repeating_key_xor(message)
 
-    assert result == 'Terminator X: Bring the noise'
+    assert result == b'Terminator X: Bring the noise'
 
     # print(decrypt_xor(message, str.encode(result)))
 
@@ -1556,7 +1504,7 @@ def test():
 
 
 if __name__ == "__main__":
-    """
+
     # Set #1
     challenge_01()
     challenge_02()
@@ -1583,7 +1531,7 @@ if __name__ == "__main__":
     challenge_19()
     challenge_20()
     challenge_21()
-    """
+
 
     challenge_22()
 

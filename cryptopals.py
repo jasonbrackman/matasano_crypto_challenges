@@ -1381,6 +1381,7 @@ class MT19337:
             self.twist()
 
         y = self.mt[self.index]
+        print('ya1:', y)
         y ^= (y >> self.u) & self.d
         y ^= (y << self.s) & self.b
         y ^= (y << self.t) & self.c
@@ -1388,7 +1389,42 @@ class MT19337:
 
         self.index += 1
 
-        return 0xffffffff & y
+        return y
+
+    @staticmethod
+    def untemper(y):
+
+        y ^= y >> MT19337.l
+        y ^= ((y << MT19337.t) & MT19337.c)
+        y = MT19337.untemperC(y)
+        y = MT19337.untemperD(y)
+        print('yb1:', y)
+
+        return y
+
+    @staticmethod
+    def untemperC(y):
+        """
+        Based on code from:
+        https://github.com/gaganpreet/matasano-crypto-3/blob/ab1f8684d3730eb67029e0d6c9e53113a2dedcee/src/clone_mt.py
+        """
+
+        mask = MT19337.b
+
+        a = y ^ ((y << 7) & mask)
+        b = y ^ ((a << 7) & mask)
+        c = y ^ ((b << 7) & mask)
+        d = y ^ ((c << 7) & mask)
+        e = y ^ ((d << 7) & mask)
+
+        return e
+
+    @staticmethod
+    def untemperD(y):
+        a = y >> 11
+        b = y ^ a
+        c = b >> 11
+        return y ^ c
 
     # // Generate the next n values from the series x_i
     # function twist() {
@@ -1415,6 +1451,7 @@ class MT19337:
             self.mt[index] = self.mt[(index + self.m) % self.n] ^ xA
 
         self.index = 0
+
 
 @time_it
 def challenge_21():
@@ -1486,6 +1523,18 @@ def challenge_23():
 
     The new "spliced" generator should predict the values of the original.
     """
+    current_time = int(time.time())
+    print("Current Time: ", current_time)
+    MT = MT19337(current_time)
+    random_number = MT.extract_number()
+    random_number2 = MT.extract_number()
+    print(random_number, random_number2)
+
+    untemper = MT19337.untemper(random_number)
+
+    print("\n")
+    print("  tempered:", random_number)
+    print("unTempered:", untemper)
     pass
 
 if __name__ == "__main__":
@@ -1520,5 +1569,3 @@ if __name__ == "__main__":
     """
     # challenge_22()
     challenge_23()
-
-

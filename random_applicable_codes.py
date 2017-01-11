@@ -65,6 +65,33 @@ def grouse_mountain():
     # NOTE: Changing the image size will change the size of the image -- but still loads the same image.
     # NOTE: Changing the 'thumb' to 'thumb2' produces no error, just a blank page.
 
+
+def friends():
+    # https: // grouse_services.fingerfoodapi.com / friends?user_id = 206092
+    jd = b"W1siZiIsIjIwMTUvMDUvMjUvMTEvNTQvMjgvNzc0LzA3YmIzNDZlYTI3NzQ2NWE4ODc4MzQ0MGI0ODE5NmQzIl0sWyJwIiwidGh1bWIiLCI3NXg3NSMiXSxbImUiLCJqcGciXV0=="
+    lb = b'W1siZiIsIjIwMTYvMDUvMTUvMjAvMzMvNDgvODAvYjI0ZDQ4YTFmYjFhMjc3ZGNkMWI3MzY5NDAwNjFhN2MiXSxbInAiLCJ0aHVtYiIsIjI3NXgyNzUjIl0sWyJlIiwianBnIl1d'
+    print(base64.b64decode(lb))
+    print(base64.b64decode(jd))
+    #print(base64.b64decode(bb).decode())
+
+
+def malware_class():
+    import io
+    from Crypto import Random
+
+    payload = b'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'
+
+    this = b"""import os
+        def is_infected(filename):"""
+
+    data = base64.b64decode(payload)
+    iv = Random.new().read(AES.block_size)
+    cipher = AES.new(io.BytesIO(this).read(24), AES.MODE_CFB, iv)
+
+    print(cipher.decrypt(data)[16:])
+
+
 if __name__ == "__main__":
-    website_post()
-    grouse_mountain()
+    # website_post()
+    # grouse_mountain()
+    friends()

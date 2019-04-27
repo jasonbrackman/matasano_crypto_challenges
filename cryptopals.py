@@ -5,6 +5,7 @@ from operator import itemgetter
 import itertools
 import collections
 import language
+
 try:
     from Crypto.Cipher import AES
     from Crypto.Util import Counter
@@ -31,7 +32,7 @@ def find_key_and_decrypt_fixed_xor(message: bytes):
                 scores.append((key, english.score_text(decrypted), decrypted))
 
         except UnicodeDecodeError as e:
-            scores.append((0, 0, b'<error>'))
+            scores.append((0, 0, b"<error>"))
 
     # Best Raw Guess
     _key, _, _decrypted = max(scores, key=itemgetter(1))
@@ -83,7 +84,7 @@ def get_normalized_hamming_distance(data: bytes, keysize: int) -> float:
     """
 
     # the greater the number of chunks the more likely a good result can be had
-    chunks = [data[keysize * n:keysize * (n + 1)] for n in range(1, 20)]
+    chunks = [data[keysize * n : keysize * (n + 1)] for n in range(1, 20)]
     chunks = [chunk for chunk in chunks if len(chunk) == keysize]
     if len(chunks) == 1:
         return 100.0
@@ -95,8 +96,11 @@ def get_normalized_hamming_distance(data: bytes, keysize: int) -> float:
 def get_secret_key_length_from_encrypted_data(text: bytes) -> int:
     """A range of tests will take place to the length of 40 or the length of the text passed in."""
 
-    max_length = 40 if len(text) > 40 else len(text)
-    results = {length: get_normalized_hamming_distance(text, length) for length in range(1, max_length)}
+    max_length = 64 if len(text) > 64 else len(text) - 1
+    results = {
+        length: get_normalized_hamming_distance(text, length)
+        for length in range(1, max_length)
+    }
 
     # Return the sorted dict's values first item - which will be the lowest score (Hamming Distance)
     results_ = sorted(results, key=results.get)
@@ -105,12 +109,31 @@ def get_secret_key_length_from_encrypted_data(text: bytes) -> int:
     return key_length
 
 
+def index_of_coincidence(msg):
+    max = 64 if len(msg) > 64 else len(msg) - 1
+    for step in range(1, max):
+        match = total = 0
+        for i in range(len(msg)):
+            for j in range(i + step, len(msg), step):
+                total += 1
+                if msg[i] == msg[j]:
+                    match += 1
+
+        ioc = float(match) / float(total)
+
+        # output the IoC as a percentage, and plot it as an ASCII bar chart
+        print("%3d%7.2f%% %s" % (step, 100 * ioc, "#" * int(0.5 + 500 * ioc)))
+
+
 def break_repeating_key_xor(message: bytes, key_length=None):
 
     if key_length is None:
         key_length = get_secret_key_length_from_encrypted_data(message)
 
-    blocks = [message[index:index + key_length] for index in range(0, len(message), key_length)]
+    blocks = [
+        message[index : index + key_length]
+        for index in range(0, len(message), key_length)
+    ]
     transposed = transpose(blocks)
 
     values = [find_key_and_decrypt_fixed_xor(block)[0] for block in transposed]
@@ -140,7 +163,7 @@ def detect_ecb_use(text: bytes, keysize: int):
     If I understand this correctly - a large enough dataset will likely have something repeated since
     ECB is stateless and deterministic.
     """
-    chunks = [text[n:n + keysize] for n in range(0, len(text), keysize)]
+    chunks = [text[n : n + keysize] for n in range(0, len(text), keysize)]
     if len(chunks) != len(set(chunks)):
         return True
     return False
@@ -166,8 +189,8 @@ def pkcs_7_padding(text: bytes, pad: int) -> bytes:
     """
 
     padding = pad - len(text) % pad
-    hexed = binascii.a2b_hex('{:02}'.format(padding))
-    text += (hexed * padding)
+    hexed = binascii.a2b_hex("{:02}".format(padding))
+    text += hexed * padding
 
     return text
 
@@ -195,7 +218,7 @@ def pkcs_7_padding_verification(message: bytes) -> bytes:
     """
     last_byte = message[-1]
     if message[-last_byte:] != bytes([last_byte] * last_byte):
-        raise ValueError('Bad Padding for message: {}'.format(message))
+        raise ValueError("Bad Padding for message: {}".format(message))
     else:
         result = message[0:-last_byte]
 
@@ -206,7 +229,7 @@ def encrypt_aes_with_custom_cbc(text: bytes, key: bytes, iv: bytes) -> list:
     results = []
     keysize = len(key)
     text = pkcs_7_padding(text, keysize)
-    blocks = [text[n:n + keysize] for n in range(0, len(text), keysize)]
+    blocks = [text[n : n + keysize] for n in range(0, len(text), keysize)]
 
     for block in blocks:
         # pad_block = pkcs_7_padding(block, keysize)[0]
@@ -221,7 +244,7 @@ def encrypt_aes_with_custom_cbc(text: bytes, key: bytes, iv: bytes) -> list:
 def decrypt_aes_with_custom_cbc(text: bytes, key: bytes, iv: bytes):
     results = []
     keysize = len(key)
-    blocks = [text[n:n + keysize] for n in range(0, len(text), keysize)]
+    blocks = [text[n : n + keysize] for n in range(0, len(text), keysize)]
 
     for block in blocks:
         aes_decrypt = decrypt_aes(block, key)
@@ -237,17 +260,19 @@ def generate_random_bytes(length: int) -> bytes:
     return os.urandom(length)
 
 
-def encrypt_ecb_oracle(prefix: bytes, text: bytes, random_aes_key: bytes, prepend: bytes = None):
+def encrypt_ecb_oracle(
+    prefix: bytes, text: bytes, random_aes_key: bytes, prepend: bytes = None
+):
 
     if prepend:
-        message = b''.join([prepend, prefix, text])
+        message = b"".join([prepend, prefix, text])
     else:
-        message = b''.join([prefix, text])
+        message = b"".join([prefix, text])
 
     # encrypt ECB
     keysize = len(random_aes_key)
     message = pkcs_7_padding(message, keysize)
-    blocks = [message[n:n + keysize] for n in range(0, len(message), keysize)]
+    blocks = [message[n : n + keysize] for n in range(0, len(message), keysize)]
     encrypted = []
     for block in blocks:
         text = encrypt_aes(block, random_aes_key)
@@ -258,7 +283,7 @@ def encrypt_ecb_oracle(prefix: bytes, text: bytes, random_aes_key: bytes, prepen
 
 def discover_block_size_and_if_ecb(encrypted_message):
     if type(encrypted_message) == list:
-        encrypted_message = b''.join(encrypted_message)
+        encrypted_message = b"".join(encrypted_message)
     elif type(encrypted_message) == bytes:
         encrypted_message = encrypted_message
     elif type(encrypted_message) == str:
@@ -271,7 +296,9 @@ def discover_block_size_and_if_ecb(encrypted_message):
     return key_length, is_ecb
 
 
-def decrypt_ecb_message_without_key(encrypted_blocks, base64_decoded: bytes, random_aes_key: bytes, prepend=None):
+def decrypt_ecb_message_without_key(
+    encrypted_blocks, base64_decoded: bytes, random_aes_key: bytes, prepend=None
+):
     """
     Built for challenge #12 and #14
 
@@ -282,37 +309,47 @@ def decrypt_ecb_message_without_key(encrypted_blocks, base64_decoded: bytes, ran
     :return:
     """
     # Create encrypted content
-    text_large = b'A' * 512
-    encr_large = encrypt_ecb_oracle(text_large, base64_decoded, random_aes_key, prepend=prepend)
+    text_large = b"A" * 512
+    encr_large = encrypt_ecb_oracle(
+        text_large, base64_decoded, random_aes_key, prepend=prepend
+    )
     key_length, is_ecb = discover_block_size_and_if_ecb(encr_large)
     # print("Key Length: {0}\nIs ECB: {1}\n".format(key_length, is_ecb))
 
-    prepend_padding_count = obtain_ecb_prepend_padding_count(base64_decoded, random_aes_key, prepend=prepend)
+    prepend_padding_count = obtain_ecb_prepend_padding_count(
+        base64_decoded, random_aes_key, prepend=prepend
+    )
 
     collector = list()
 
     for block_idx in range(len(encrypted_blocks)):
-        block_text = (b'B' * (prepend_padding_count - key_length)) + b'A' * key_length * block_idx
+        block_text = (
+            b"B" * (prepend_padding_count - key_length)
+        ) + b"A" * key_length * block_idx
 
         current_block = list()
         for length in reversed(range(key_length)):
-            text = block_text + b'A' * length  # one block short
+            text = block_text + b"A" * length  # one block short
 
-            result = encrypt_ecb_oracle(text, base64_decoded[block_idx * 16:], random_aes_key, prepend=prepend)
+            result = encrypt_ecb_oracle(
+                text, base64_decoded[block_idx * 16 :], random_aes_key, prepend=prepend
+            )
             if prepend_padding_count > 0:
                 result = result[2:]
 
-            decrypted_block = b''.join(current_block)
+            decrypted_block = b"".join(current_block)
             _decrypted = False
 
             for index in range(0, 255):
                 if _decrypted is False:
 
-                    text2 = b''.join([text, decrypted_block, chr(index).encode()])
+                    text2 = b"".join([text, decrypted_block, chr(index).encode()])
 
                     if len(text2) <= key_length + len(block_text):
 
-                        result2 = encrypt_ecb_oracle(text2, base64_decoded, random_aes_key, prepend=prepend)
+                        result2 = encrypt_ecb_oracle(
+                            text2, base64_decoded, random_aes_key, prepend=prepend
+                        )
                         if prepend_padding_count > 0:
                             result2 = result2[2:]
 
@@ -323,7 +360,7 @@ def decrypt_ecb_message_without_key(encrypted_blocks, base64_decoded: bytes, ran
                                 _decrypted = True
 
         collector.append(b"".join(current_block))
-    return b''.join(collector)
+    return b"".join(collector)
 
 
 def create_structured_cookie(from_email: str) -> collections.OrderedDict:
@@ -343,29 +380,29 @@ def create_structured_cookie(from_email: str) -> collections.OrderedDict:
     :return:
     """
     kv = collections.OrderedDict()
-    items = from_email.split('&')
+    items = from_email.split("&")
     for item in items:
-        stuff = item.split('=')
+        stuff = item.split("=")
         kv[stuff[0]] = stuff[1]
 
     return kv
 
 
 def obtain_ecb_pkcs7_count(message, key, prepend=None) -> int:
-    text_large = b'A' * 512
-    encr_large = encrypt_ecb_oracle(b'', text_large, key, prepend=prepend)
+    text_large = b"A" * 512
+    encr_large = encrypt_ecb_oracle(b"", text_large, key, prepend=prepend)
     key_length, is_ecb = discover_block_size_and_if_ecb(encr_large)
 
     assert is_ecb is True, "ECB not present - unable to discover key length."
 
     result = 0
-    original = encrypt_ecb_oracle(b'', message, key, prepend=prepend)
+    original = encrypt_ecb_oracle(b"", message, key, prepend=prepend)
     original_length = len(original)
     for index in range(key_length):
-        prefix = b'X'*index
+        prefix = b"X" * index
         new = encrypt_ecb_oracle(prefix, message, key, prepend=prepend)
         if len(new) > original_length:
-            result = index-1
+            result = index - 1
             break
     # final_test = encrypt_ecb_oracle(b'A'*18, message, key, random_prepend=prepend)
     # print("Final Test: {}, {}".format(len(final_test), original_length))
@@ -379,14 +416,14 @@ def obtain_ecb_prepend_padding_count(message, key, prepend=None) -> int:
     # Go through a single block and attempt to crack it.
     # if the last byte is not as expected.  Try one less - repeat
     # hit a block of expectation -- there is a 1/255 shot that it is correct length.
-    text_large = b'A' * 256 + message
-    encr_large = encrypt_ecb_oracle(b'', text_large, key, prepend=prepend)
+    text_large = b"A" * 256 + message
+    encr_large = encrypt_ecb_oracle(b"", text_large, key, prepend=prepend)
     key_length, is_ecb = discover_block_size_and_if_ecb(encr_large)
     # print("KEyLeNgtH: {}".format(key_length))
 
     assert is_ecb is True, "ECB not present - unable to discover key length."
     for index in range(0, 5):
-        prefix = b'A' * (key_length * index)
+        prefix = b"A" * (key_length * index)
         result = encrypt_ecb_oracle(prefix, message, key, prepend=prepend)
         blocks_match = result[1] == result[2]
 
@@ -394,7 +431,7 @@ def obtain_ecb_prepend_padding_count(message, key, prepend=None) -> int:
             # print('Block #{} - {}'.format(index, blocks_match))
             reducing_match = True
             while reducing_match is True:
-                prefix = prefix[0:(len(prefix) - 1)]
+                prefix = prefix[0 : (len(prefix) - 1)]
                 result = encrypt_ecb_oracle(prefix, message, key, prepend=prepend)
                 reducing_match = result[1] == result[2]
                 if not reducing_match:
@@ -414,18 +451,18 @@ def generate_keystream(nonce, counter):
     :param counter: 64 bit little endian block count (byte count / keylength)
     :return: 128bit / 16byte string
     """
-    format = '<q'  # < = little endian
-                   # q = convert hex
+    format = "<q"  # < = little endian
+    # q = convert hex
     c_nonce = struct.pack(format, nonce)
     c_counter = struct.pack(format, counter)
 
-    return b''.join((c_nonce, c_counter))
+    return b"".join((c_nonce, c_counter))
 
 
 def aes_with_custom_ctr(message, key, nonce):
     results = []
     keysize = len(key)
-    blocks = [message[n:n + keysize] for n in range(0, len(message), keysize)]
+    blocks = [message[n : n + keysize] for n in range(0, len(message), keysize)]
 
     for counter, block in enumerate(blocks):
 
@@ -433,9 +470,9 @@ def aes_with_custom_ctr(message, key, nonce):
         aes_block = encrypt_aes(keystream, key)
         xor_block = encrypt_xor(aes_block, block, hexlify=False)
 
-        results.append(xor_block[0:len(block)])
+        results.append(xor_block[0 : len(block)])
 
-    return b''.join(results)
+    return b"".join(results)
 
 
 def transpose(blocks: list) -> list:
@@ -466,13 +503,13 @@ class MT19337:
     w, n, m, r = 32, 624, 397, 31
 
     # self.lower_mask = hex((1<<31)-1)
-    lower_mask = 0x7fffffff
-    upper_mask = 0xffffffff & -lower_mask
+    lower_mask = 0x7FFFFFFF
+    upper_mask = 0xFFFFFFFF & -lower_mask
     # print('LM: {}'.format(hex(lower_mask)))
     # print('UM: {}'.format(hex(upper_mask)))
 
     # The value for f for MT19937 is 1812433253
-    f = 0x6c078965
+    f = 0x6C078965
 
     a = 0x9908B0DF
     u, d = 11, 0xFFFFFFFF
@@ -510,7 +547,9 @@ class MT19337:
     def seed_mt(self, seed):
         self.mt[0] = seed
         for index in range(1, 624):
-            self.mt[index] = 0xffffffff & (self.f * (self.mt[index - 1] ^ (self.mt[index - 1] >> 30)) + index)
+            self.mt[index] = 0xFFFFFFFF & (
+                self.f * (self.mt[index - 1] ^ (self.mt[index - 1] >> 30)) + index
+            )
 
     # // Extract a tempered value based on MT[index]
     # // calling twist() every n numbers
@@ -538,7 +577,7 @@ class MT19337:
             self.twist()
 
         y = self.mt[self.index]
-        print('ya1:', y)
+        print("ya1:", y)
         y ^= (y >> self.u) & self.d
         y ^= (y << self.s) & self.b
         y ^= (y << self.t) & self.c
@@ -552,10 +591,10 @@ class MT19337:
     def untemper(y):
 
         y ^= y >> MT19337.l
-        y ^= ((y << MT19337.t) & MT19337.c)
+        y ^= (y << MT19337.t) & MT19337.c
         y = MT19337.untemperC(y)
         y = MT19337.untemperD(y)
-        print('yb1:', y)
+        print("yb1:", y)
 
         return y
 
@@ -599,8 +638,9 @@ class MT19337:
 
     def twist(self):
         for index in range(0, 624):
-            x = (self.mt[index] & self.upper_mask) + \
-                (self.mt[(index + 1) % self.n] & self.lower_mask)
+            x = (self.mt[index] & self.upper_mask) + (
+                self.mt[(index + 1) % self.n] & self.lower_mask
+            )
             xA = x >> 1
             if (x % 2) != 0:
                 xA ^= self.a
@@ -608,5 +648,3 @@ class MT19337:
             self.mt[index] = self.mt[(index + self.m) % self.n] ^ xA
 
         self.index = 0
-
-
